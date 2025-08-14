@@ -46,7 +46,7 @@ const NFTVerification = ({ isVerified, setIsVerified, publicKey }) => (
   <div className="bg-black/60 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
     <h3 className="text-2xl font-bold text-white mb-4 font-mono">NFT Verification</h3>
     <p className="text-red-200">
-      {isVerified ? "You are a verified NFT warrior!" : "Verify your NFT to claim rewards."}
+      {isVerified ? "You are a verified degen!" : "Verify your NFT to claim rewards."}
     </p>
   </div>
 );
@@ -231,7 +231,7 @@ const App = () => {
                 TETO
               </h2>
               <p className="text-2xl text-red-200 mt-3 font-semibold">
-                Warrior Rewards Portal
+                Degen Portal
               </p>
               <div className="flex items-center justify-center space-x-2 mt-4">
                 <div className="w-16 h-1 bg-gradient-to-r from-transparent via-red-500 to-transparent"></div>
@@ -247,8 +247,7 @@ const App = () => {
                   TRUE DEGENS WELCOME
                 </h3>
                 <p className="text-red-200 text-lg leading-relaxed">
-                  Connect your Solana wallet to verify your NFT warrior status and begin your training. 
-                  Earn <span className="text-red-400 font-bold">Teto</span> rewards every hour and test your luck in the 
+                  Connect your Solana wallet to verify your a true degen <span className="text-red-400 font-bold">Teto</span> rewards every hour and test your luck in the 
                   <span className="text-yellow-400 font-bold"> Wheel of Fortune</span>!
                 </p>
               </div>
@@ -264,7 +263,7 @@ const App = () => {
                 </div>
                 <div className="flex items-center justify-center space-x-3 text-red-300">
                   <Swords className="w-5 h-5 text-yellow-400" />
-                  <span>NFT Warrior Verification</span>
+                  <span>Degen Verification</span>
                 </div>
               </div>
               
@@ -328,7 +327,7 @@ const App = () => {
               <Coins className="w-12 h-12 text-red-500" />
               <div>
                 <h2 className="text-3xl font-bold text-white font-mono">TETO REWARDS</h2>
-                <p className="text-red-200">Warrior Portal</p>
+                <p className="text-red-200">Degen Portal</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
