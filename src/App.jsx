@@ -62,10 +62,10 @@ const LotteryWheel = ({ tetoBalance, updateTetoBalance, isVerified }) => (
 
 const RewardsDisplay = ({ tetoBalance, isVerified, timeUntilNextClaim, onClaimReward, formatTime }) => (
   <div className="bg-black/60 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
-    <h3 className="text-2xl font-bold text-white mb-4 font-mono">Teto Rewards</h3>
+    <h3 className="text-2xl font-bold text-white mb-4 font-mono">Digital-Dojo</h3>
     <div className="flex items-center space-x-2 mt-4">
       <Coins className="w-8 h-8 text-yellow-400" />
-      <span className="text-4xl font-bold text-white">{tetoBalance} TETO</span>
+      <span className="text-4xl font-bold text-white">{tetoBalance} Teto</span>
     </div>
     <div className="mt-4">
       <div className="flex items-center justify-between text-red-200">
@@ -206,12 +206,12 @@ const App = () => {
             <div className="flex items-center justify-center space-x-3">
               <Swords className="w-8 h-8 text-white animate-pulse" />
               <h1 className="text-3xl font-bold text-white tracking-wider font-mono">
-                DIGITAL DOJO
+                
               </h1>
               <Swords className="w-8 h-8 text-white animate-pulse" />
             </div>
             <p className="text-center text-red-100 text-sm mt-1 font-semibold">
-              TRUE DEGENS WELCOME
+              
             </p>
           </div>
         </div>
@@ -228,7 +228,7 @@ const App = () => {
                 </div>
               </div>
               <h2 className="text-7xl font-bold text-white mt-6 font-mono tracking-wider">
-                TETO
+                
               </h2>
               <p className="text-2xl text-red-200 mt-3 font-semibold">
                 Degen Portal
@@ -248,7 +248,7 @@ const App = () => {
                 </h3>
                 <p className="text-red-200 text-lg leading-relaxed">
                   Connect your Solana wallet to verify your a true degen <span className="text-red-400 font-bold">Teto</span> rewards every hour and test your luck in the 
-                  <span className="text-yellow-400 font-bold"> Wheel of Fortune</span>!
+                  <span className="text-yellow-400 font-bold"> Wheel of Rugs</span>!
                 </p>
               </div>
               
@@ -310,12 +310,12 @@ const App = () => {
           <div className="flex items-center justify-center space-x-3">
             <Swords className="w-8 h-8 text-white animate-pulse" />
             <h1 className="text-3xl font-bold text-white tracking-wider font-mono">
-              DIGITAL DOJO
+              
             </h1>
             <Swords className="w-8 h-8 text-white animate-pulse" />
           </div>
           <p className="text-center text-red-100 text-sm mt-1 font-semibold">
-            TRUE DEGENS WELCOME
+            
           </p>
         </div>
       </div>
