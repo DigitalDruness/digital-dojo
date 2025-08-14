@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import {
   PhantomWalletAdapter,
@@ -17,11 +16,6 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 const WalletContextProvider = ({ children }) => {
   // Use Helius RPC endpoint for faster performance
   const endpoint = useMemo(() => getRPCUrl(), []);
-  
-  // Create optimized connection with Helius
-  const connection = useMemo(() => {
-    return new Connection(endpoint, HELIUS_CONNECTION_CONFIG);
-  }, [endpoint]);
 
   const wallets = useMemo(
     () => [

@@ -9,6 +9,11 @@ export default defineConfig(({ mode }) => ({
   ].filter(Boolean),
   define: {
     global: 'globalThis',
+    'process.env': {},
+    'process.browser': true,
+    'process.version': '"v18.0.0"',
+    'process.platform': '"browser"',
+    'process.nextTick': 'setTimeout',
   },
   build: {
     target: 'esnext',
@@ -25,9 +30,25 @@ export default defineConfig(({ mode }) => ({
     format: 'esm',
   },
   optimizeDeps: {
-    include: ['react', 'react-dom'],
+    include: [
+      'react', 
+      'react-dom', 
+      '@solana/web3.js', 
+      'buffer', 
+      'process',
+      'crypto-browserify',
+      'stream-browserify',
+      'util',
+      'readable-stream',
+      'events',
+      'path-browserify',
+      'os-browserify'
+    ],
     esbuildOptions: {
       target: 'esnext',
+      define: {
+        global: 'globalThis',
+      },
     },
   },
   server: {
@@ -37,8 +58,14 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       buffer: 'buffer',
-      process: 'process/browser',
+      process: 'process',
       util: 'util',
+      crypto: 'crypto-browserify',
+      stream: 'stream-browserify',
+      events: 'events',
+      path: 'path-browserify',
+      os: 'os-browserify',
+      'readable-stream': 'readable-stream',
     },
   },
 }))
