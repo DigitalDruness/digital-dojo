@@ -203,9 +203,12 @@ const App = () => {
     <div className="min-h-screen relative overflow-hidden font-vt323">
       {/* Font Import */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=VT323&family=Noto+Sans+JP:wght@700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=VT323&family=Noto+Sans+JP:wght@700&family=Zen+Antique&display=swap');
         .font-noto-sans-jp {
           font-family: 'Noto Sans JP', sans-serif;
+        }
+        .font-zen-antique {
+          font-family: 'Zen Antique', serif;
         }
       `}</style>
       
@@ -228,7 +231,9 @@ const App = () => {
         <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center justify-center space-x-3">
             <h1 className="text-3xl font-bold text-red-900 tracking-wider">
-              ⛩ <span className="font-noto-sans-jp text-4xl">DIGITAL DOJO</span> ⛩
+              <span className="font-zen-antique text-4xl">⛩</span>
+              <span className="font-noto-sans-jp text-4xl">DIGITAL DOJO</span>
+              <span className="font-zen-antique text-4xl">⛩</span>
             </h1>
           </div>
         </div>
