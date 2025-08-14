@@ -46,7 +46,7 @@ const NFTVerification = ({ isVerified, setIsVerified, publicKey }) => (
   <div className="bg-black/60 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
     <h3 className="text-2xl font-bold text-white mb-4 font-mono">NFT Verification</h3>
     <p className="text-red-200">
-      {isVerified ? "You are a verified degen!" : "Verify your NFT to claim rewards."}
+      {isVerified ? "You are a verified NFT warrior!" : "Verify your NFT to claim rewards."}
     </p>
   </div>
 );
@@ -62,10 +62,10 @@ const LotteryWheel = ({ tetoBalance, updateTetoBalance, isVerified }) => (
 
 const RewardsDisplay = ({ tetoBalance, isVerified, timeUntilNextClaim, onClaimReward, formatTime }) => (
   <div className="bg-black/60 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
-    <h3 className="text-2xl font-bold text-white mb-4 font-mono">Digital-Dojo</h3>
+    <h3 className="text-2xl font-bold text-white mb-4 font-mono">Teto Rewards</h3>
     <div className="flex items-center space-x-2 mt-4">
       <Coins className="w-8 h-8 text-yellow-400" />
-      <span className="text-4xl font-bold text-white">{tetoBalance} Teto</span>
+      <span className="text-4xl font-bold text-white">{tetoBalance} TETO</span>
     </div>
     <div className="mt-4">
       <div className="flex items-center justify-between text-red-200">
@@ -92,7 +92,7 @@ const RewardsDisplay = ({ tetoBalance, isVerified, timeUntilNextClaim, onClaimRe
   </div>
 );
 
-// The core RewardsApp component, now with a custom wallet provider
+// The core RewardsApp component with simulated wallet logic
 const App = () => {
   // Use a context-like state management for the wallet connection.
   const [walletConnected, setWalletConnected] = useState(false);
@@ -168,22 +168,21 @@ const App = () => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  // Custom wallet connection function
-  const connectWallet = async () => {
-    try {
-      const { solana } = window;
-      if (solana) {
-        const response = await solana.connect();
-        setWalletConnected(true);
-        setPublicKey(response.publicKey);
-        console.log('Wallet connected with public key:', response.publicKey.toString());
-      } else {
-        alert('Phantom wallet not found! Please get a Phantom wallet.');
-      }
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
+  // START OF SIMULATED WALLET LOGIC
+  const toggleWalletConnection = () => {
+    if (walletConnected) {
+      setWalletConnected(false);
+      setPublicKey(null);
+      console.log('Wallet disconnected.');
+    } else {
+      // Simulate a connection and generate a mock public key
+      const mockPublicKey = `SimulatedPublicKey${Math.floor(Math.random() * 1000000)}`;
+      setWalletConnected(true);
+      setPublicKey(mockPublicKey);
+      console.log('Wallet connected with mock public key:', mockPublicKey);
     }
   };
+  // END OF SIMULATED WALLET LOGIC
 
   if (!walletConnected) {
     return (
@@ -192,7 +191,8 @@ const App = () => {
         <div 
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
           style={{
-            backgroundImage: 'url(https://placehold.co/1920x1080/000000/ffffff?text=Dojo+Background)',
+            // The URL has been updated to remove the text parameter
+            backgroundImage: 'url(https://placehold.co/1920x1080/000000/000000)',
             filter: 'brightness(0.4)'
           }}
         />
@@ -206,12 +206,12 @@ const App = () => {
             <div className="flex items-center justify-center space-x-3">
               <Swords className="w-8 h-8 text-white animate-pulse" />
               <h1 className="text-3xl font-bold text-white tracking-wider font-mono">
-                
+                DIGITAL DOJO
               </h1>
               <Swords className="w-8 h-8 text-white animate-pulse" />
             </div>
             <p className="text-center text-red-100 text-sm mt-1 font-semibold">
-              
+              TRUE DEGENS WELCOME
             </p>
           </div>
         </div>
@@ -228,10 +228,10 @@ const App = () => {
                 </div>
               </div>
               <h2 className="text-7xl font-bold text-white mt-6 font-mono tracking-wider">
-                
+                TETO
               </h2>
               <p className="text-2xl text-red-200 mt-3 font-semibold">
-                Degen Portal
+                Warrior Rewards Portal
               </p>
               <div className="flex items-center justify-center space-x-2 mt-4">
                 <div className="w-16 h-1 bg-gradient-to-r from-transparent via-red-500 to-transparent"></div>
@@ -247,8 +247,9 @@ const App = () => {
                   TRUE DEGENS WELCOME
                 </h3>
                 <p className="text-red-200 text-lg leading-relaxed">
-                  Connect your Solana wallet to verify your a true degen <span className="text-red-400 font-bold">Teto</span> rewards every hour and test your luck in the 
-                  <span className="text-yellow-400 font-bold"> Wheel of Rugs</span>!
+                  Connect your Solana wallet to verify your NFT warrior status and begin your training. 
+                  Earn <span className="text-red-400 font-bold">Teto</span> rewards every hour and test your luck in the 
+                  <span className="text-yellow-400 font-bold"> Wheel of Fortune</span>!
                 </p>
               </div>
               
@@ -263,13 +264,13 @@ const App = () => {
                 </div>
                 <div className="flex items-center justify-center space-x-3 text-red-300">
                   <Swords className="w-5 h-5 text-yellow-400" />
-                  <span>Degen Verification</span>
+                  <span>NFT Warrior Verification</span>
                 </div>
               </div>
               
               <div className="relative">
                  <button 
-                    onClick={connectWallet}
+                    onClick={toggleWalletConnection}
                     className="w-full !bg-gradient-to-r !from-red-600 !to-red-700 hover:!from-red-700 hover:!to-red-800 !border-2 !border-red-400 !text-white !font-bold !py-4 !px-8 !text-lg !rounded-xl !transition-all !duration-300 !shadow-lg hover:!shadow-red-500/50"
                   >
                     Connect Wallet
@@ -296,7 +297,8 @@ const App = () => {
       <div 
         className="fixed inset-0 bg-cover bg-center bg-no-repeat"
         style={{
-          backgroundImage: 'url(https://placehold.co/1920x1080/000000/ffffff?text=Dojo+Background)',
+          // The URL has been updated to remove the text parameter
+          backgroundImage: 'url(https://placehold.co/1920x1080/000000/000000)',
           filter: 'brightness(0.3)'
         }}
       />
@@ -310,12 +312,12 @@ const App = () => {
           <div className="flex items-center justify-center space-x-3">
             <Swords className="w-8 h-8 text-white animate-pulse" />
             <h1 className="text-3xl font-bold text-white tracking-wider font-mono">
-              
+              DIGITAL DOJO
             </h1>
             <Swords className="w-8 h-8 text-white animate-pulse" />
           </div>
           <p className="text-center text-red-100 text-sm mt-1 font-semibold">
-            
+            TRUE DEGENS WELCOME
           </p>
         </div>
       </div>
@@ -327,11 +329,18 @@ const App = () => {
               <Coins className="w-12 h-12 text-red-500" />
               <div>
                 <h2 className="text-3xl font-bold text-white font-mono">TETO REWARDS</h2>
-                <p className="text-red-200">Degen Portal</p>
+                <p className="text-red-200">Warrior Portal</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
-               <span className="text-white">Connected: {publicKey?.toString().substring(0, 4)}...{publicKey?.toString().slice(-4)}</span>
+               {/* Updated button to toggle connection */}
+               <button
+                  onClick={toggleWalletConnection}
+                  className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded-xl transition-colors"
+                >
+                  Disconnect Wallet
+               </button>
+               <span className="text-white">Connected: {publicKey?.substring(0, 4)}...{publicKey?.slice(-4)}</span>
             </div>
           </div>
         </header>
