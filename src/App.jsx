@@ -225,7 +225,7 @@ const App = () => {
         <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center justify-center space-x-3">
             <h1 className="text-3xl font-bold text-red-900 tracking-wider">
-              DIGITAL DOJO
+              ⛩ DIGITAL DOJO ⛩
             </h1>
           </div>
           <p className="text-center text-red-100 text-sm mt-1 font-semibold">
@@ -247,15 +247,24 @@ const App = () => {
                     TRUE DEGENS WELCOME
                   </h3>
                   <p className="text-red-200 text-lg leading-relaxed">
-                    Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-yellow-400 font-bold">Teto</span> rewards every hour and test your luck on the <span className="text-yellow-400 font-bold">Wheel</span>!
+                    Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-900 font-bold">Teto</span> rewards every hour and test your luck on the <span className="text-red-900 font-bold">Wheel</span>!
                   </p>
                 </div>
 
                 {/* Feature list */}
                 <div className="text-center mb-6">
-                  <p className="mb-2 text-red-200 font-semibold">Hourly Teto Rewards</p>
-                  <p className="mb-2 text-red-200 font-semibold">Lottery Wheel Gambling</p>
-                  <p className="text-red-200 font-semibold">Degen Duels</p>
+                  <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
+                    <span className="text-red-900">⛩</span>
+                    <span>Hourly Teto Rewards</span>
+                  </p>
+                  <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
+                    <span className="text-red-900">⛩</span>
+                    <span>Lottery Wheel Gambling</span>
+                  </p>
+                  <p className="text-red-200 font-semibold flex items-center justify-center space-x-2">
+                    <span className="text-red-900">⛩</span>
+                    <span>Degen Duels</span>
+                  </p>
                 </div>
                 
                 <div className="relative">
