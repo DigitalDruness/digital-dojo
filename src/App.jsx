@@ -228,9 +228,6 @@ const App = () => {
               ⛩ DIGITAL DOJO ⛩
             </h1>
           </div>
-          <p className="text-center text-red-100 text-sm mt-1 font-semibold">
-            TRUE DEGENS WELCOME
-          </p>
         </div>
       </div>
 
