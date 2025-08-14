@@ -157,7 +157,7 @@ const App = () => {
             {/* Main Content Container */}
             <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-120px)] p-4">
                 <div className="text-center max-w-2xl">
-                    <div id="app-container" className="bg-black/60 backdrop-blur-lg rounded-3xl p-10 border-2 border-red-500/50 shadow-2xl">
+                    <div id="app-container" className="bg-black/30 backdrop-blur-lg rounded-3xl p-10 border-2 border-red-500/50 shadow-2xl">
                         {/* Conditional rendering based on connection status */}
                         {!isConnected ? (
                             // Disconnected view
@@ -215,13 +215,13 @@ const App = () => {
                                 </header>
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                                     <div className="lg:col-span-1 space-y-6">
-                                        <div className="bg-black/60 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
+                                        <div className="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
                                             <h3 className="text-2xl font-bold text-red-900 mb-4 font-vt323">NFT Verification</h3>
                                             <p className="text-red-200 font-vt323">
                                                 {isVerified ? "You are a verified NFT warrior!" : "Verify your NFT to claim rewards."}
                                             </p>
                                         </div>
-                                        <div className="bg-black/60 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
+                                        <div className="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
                                             <h3 className="text-2xl font-bold text-red-900 mb-4 font-vt323">Teto Rewards</h3>
                                             <div className="flex items-center space-x-2 mt-4">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-yellow-400">
@@ -254,7 +254,7 @@ const App = () => {
                                         </div>
                                     </div>
                                     <div className="lg:col-span-2">
-                                        <div className="bg-black/60 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
+                                        <div className="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
                                             <h3 className="text-2xl font-bold text-red-900 mb-4 font-vt323">Lottery Wheel</h3>
                                             <p className="text-red-200 font-vt323">
                                                 The wheel of fortune is not yet implemented.
