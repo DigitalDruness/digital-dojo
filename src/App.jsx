@@ -203,7 +203,10 @@ const App = () => {
     <div className="min-h-screen relative overflow-hidden font-vt323">
       {/* Font Import */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=VT323&family=Noto+Sans+JP:wght@700&display=swap');
+        .font-noto-sans-jp {
+          font-family: 'Noto Sans JP', sans-serif;
+        }
       `}</style>
       
       {/* Background Image */}
@@ -225,7 +228,7 @@ const App = () => {
         <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center justify-center space-x-3">
             <h1 className="text-3xl font-bold text-red-900 tracking-wider">
-              ⛩ DIGITAL DOJO ⛩
+              ⛩ <span className="font-noto-sans-jp text-4xl">DIGITAL DOJO</span> ⛩
             </h1>
           </div>
         </div>
@@ -240,7 +243,7 @@ const App = () => {
             {!connected ? (
               <>
                 <div className="mb-6">
-                  <h3 className="text-3xl font-bold text-red-900 mb-4">
+                  <h3 className="text-3xl font-bold text-red-900 mb-4 font-noto-sans-jp">
                     TRUE DEGENS WELCOME
                   </h3>
                   <p className="text-red-200 text-lg leading-relaxed">
