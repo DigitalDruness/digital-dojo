@@ -191,9 +191,10 @@ const App = () => {
         <div 
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
           style={{
-            // The URL has been updated to remove the text parameter
-            backgroundImage: 'url(https://placehold.co/1920x1080/000000/000000)',
-            filter: 'brightness(0.4)'
+            backgroundImage: `url(dojo-bg.jpg.jpg)`,
+            filter: 'brightness(0.4)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
           }}
         />
         
@@ -226,17 +227,6 @@ const App = () => {
                 <div className="absolute -top-2 -right-2">
                   <Swords className="w-12 h-12 text-yellow-400 animate-bounce" />
                 </div>
-              </div>
-              <h2 className="text-7xl font-bold text-white mt-6 font-mono tracking-wider">
-                TETO
-              </h2>
-              <p className="text-2xl text-red-200 mt-3 font-semibold">
-                Warrior Rewards Portal
-              </p>
-              <div className="flex items-center justify-center space-x-2 mt-4">
-                <div className="w-16 h-1 bg-gradient-to-r from-transparent via-red-500 to-transparent"></div>
-                <Trophy className="w-6 h-6 text-yellow-400" />
-                <div className="w-16 h-1 bg-gradient-to-r from-transparent via-red-500 to-transparent"></div>
               </div>
             </div>
             
@@ -297,9 +287,10 @@ const App = () => {
       <div 
         className="fixed inset-0 bg-cover bg-center bg-no-repeat"
         style={{
-          // The URL has been updated to remove the text parameter
-          backgroundImage: 'url(https://placehold.co/1920x1080/000000/000000)',
-          filter: 'brightness(0.3)'
+            backgroundImage: `url(dojo-bg.jpg.jpg)`,
+            filter: 'brightness(0.3)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
         }}
       />
       
@@ -329,7 +320,6 @@ const App = () => {
               <Coins className="w-12 h-12 text-red-500" />
               <div>
                 <h2 className="text-3xl font-bold text-white font-mono">TETO REWARDS</h2>
-                <p className="text-red-200">Warrior Portal</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
