@@ -187,11 +187,11 @@ const App = () => {
                                 <div className="relative">
                                     <button
                                         id="connect-button"
-                                        className="wallet-connect-button"
+                                        className="wallet-connect-button relative z-20"
                                         onClick={() => setShowModal(true)}>
                                         Connect Wallet
                                     </button>
-                                    <div className="absolute -inset-1 bg-gradient-to-r from-red-600 to-red-400 rounded-xl blur opacity-30 animate-pulse"></div>
+                                    <div className="absolute -inset-1 bg-gradient-to-r from-red-600 to-red-400 rounded-xl blur opacity-30 animate-pulse z-10"></div>
                                 </div>
                             </div>
                         ) : (
