@@ -92,27 +92,53 @@ const RewardsDisplay = ({ tetoBalance, isVerified, timeUntilNextClaim, onClaimRe
   </div>
 );
 
-// The core RewardsApp component with simulated wallet logic
-const App = () => {
-  // Use a context-like state management for the wallet connection.
-  const [walletConnected, setWalletConnected] = useState(false);
+// A custom hook to simulate the wallet adapter's behavior without external dependencies
+const useMockWallet = () => {
+  const [connected, setConnected] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [publicKey, setPublicKey] = useState(null);
+
+  const connect = async () => {
+    setConnecting(true);
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate async connection
+    setPublicKey(`SimulatedPublicKey${Math.floor(Math.random() * 1000000)}`);
+    setConnected(true);
+    setConnecting(false);
+  };
+
+  const disconnect = () => {
+    setConnected(false);
+    setPublicKey(null);
+  };
+
+  return { connected, connecting, publicKey, connect, disconnect };
+};
+
+// Main App component that contains the UI logic
+const App = () => {
+  const { connected, connecting, publicKey, connect, disconnect } = useMockWallet();
 
   const [tetoBalance, setTetoBalance] = useState(0);
   const [isVerified, setIsVerified] = useState(false);
   const [lastClaimTime, setLastClaimTime] = useState(null);
   const [timeUntilNextClaim, setTimeUntilNextClaim] = useState(0);
 
-  // Load saved data on component mount
+  // Load saved data on component mount based on the connected wallet's public key
   useEffect(() => {
     if (publicKey) {
-      const savedBalance = localStorage.getItem(`teto_balance_${publicKey.toString()}`);
-      const savedLastClaim = localStorage.getItem(`last_claim_${publicKey.toString()}`);
-      const savedVerification = localStorage.getItem(`verified_${publicKey.toString()}`);
+      const savedBalance = localStorage.getItem(`teto_balance_${publicKey}`);
+      const savedLastClaim = localStorage.getItem(`last_claim_${publicKey}`);
+      const savedVerification = localStorage.getItem(`verified_${publicKey}`);
       
       if (savedBalance) setTetoBalance(parseInt(savedBalance));
       if (savedLastClaim) setLastClaimTime(parseInt(savedLastClaim));
       if (savedVerification) setIsVerified(JSON.parse(savedVerification));
+    } else {
+      // Clear state if wallet is disconnected
+      setTetoBalance(0);
+      setIsVerified(false);
+      setLastClaimTime(null);
+      setTimeUntilNextClaim(0);
     }
   }, [publicKey]);
 
@@ -137,7 +163,7 @@ const App = () => {
   }, [lastClaimTime]);
 
   const claimHourlyReward = () => {
-    if (!isVerified) return;
+    if (!isVerified || !publicKey) return;
     
     const now = Date.now();
     const hourInMs = 60 * 60 * 1000;
@@ -149,16 +175,16 @@ const App = () => {
       setTetoBalance(newBalance);
       setLastClaimTime(now);
       
-      // Save to localStorage
-      localStorage.setItem(`teto_balance_${publicKey.toString()}`, newBalance.toString());
-      localStorage.setItem(`last_claim_${publicKey.toString()}`, now.toString());
+      // Save to localStorage using the real public key
+      localStorage.setItem(`teto_balance_${publicKey}`, newBalance.toString());
+      localStorage.setItem(`last_claim_${publicKey}`, now.toString());
     }
   };
 
   const updateTetoBalance = (newBalance) => {
     setTetoBalance(newBalance);
     if (publicKey) {
-      localStorage.setItem(`teto_balance_${publicKey.toString()}`, newBalance.toString());
+      localStorage.setItem(`teto_balance_${publicKey}`, newBalance.toString());
     }
   };
 
@@ -168,23 +194,12 @@ const App = () => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  // START OF SIMULATED WALLET LOGIC
-  const toggleWalletConnection = () => {
-    if (walletConnected) {
-      setWalletConnected(false);
-      setPublicKey(null);
-      console.log('Wallet disconnected.');
-    } else {
-      // Simulate a connection and generate a mock public key
-      const mockPublicKey = `SimulatedPublicKey${Math.floor(Math.random() * 1000000)}`;
-      setWalletConnected(true);
-      setPublicKey(mockPublicKey);
-      console.log('Wallet connected with mock public key:', mockPublicKey);
-    }
-  };
-  // END OF SIMULATED WALLET LOGIC
-
-  if (!walletConnected) {
+  const truncatePublicKey = (key) => {
+    if (!key) return '';
+    return `${key.substring(0, 4)}...${key.slice(-4)}`;
+  }
+  
+  if (!connected) {
     return (
       <div className="min-h-screen relative overflow-hidden">
         {/* Background Image */}
@@ -205,11 +220,9 @@ const App = () => {
         <div className="relative z-10 bg-gradient-to-r from-red-600 via-red-500 to-red-600 border-b-4 border-red-400 shadow-lg">
           <div className="max-w-6xl mx-auto px-4 py-3">
             <div className="flex items-center justify-center space-x-3">
-              <Swords className="w-8 h-8 text-white animate-pulse" />
               <h1 className="text-3xl font-bold text-white tracking-wider font-mono">
                 DIGITAL DOJO
               </h1>
-              <Swords className="w-8 h-8 text-white animate-pulse" />
             </div>
             <p className="text-center text-red-100 text-sm mt-1 font-semibold">
               TRUE DEGENS WELCOME
@@ -223,10 +236,7 @@ const App = () => {
             {/* Logo Section */}
             <div className="mb-12">
               <div className="relative inline-block">
-                <Coins className="w-32 h-32 mx-auto text-red-500" />
-                <div className="absolute -top-2 -right-2">
-                  <Swords className="w-12 h-12 text-yellow-400 animate-bounce" />
-                </div>
+                {/* Icons removed */}
               </div>
             </div>
             
@@ -243,37 +253,18 @@ const App = () => {
                 </p>
               </div>
               
-              <div className="space-y-4 mb-8">
-                <div className="flex items-center justify-center space-x-3 text-red-300">
-                  <Zap className="w-5 h-5 text-yellow-400" />
-                  <span>Hourly Teto Rewards</span>
-                </div>
-                <div className="flex items-center justify-center space-x-3 text-red-300">
-                  <Trophy className="w-5 h-5 text-yellow-400" />
-                  <span>Lottery Wheel Multipliers</span>
-                </div>
-                <div className="flex items-center justify-center space-x-3 text-red-300">
-                  <Swords className="w-5 h-5 text-yellow-400" />
-                  <span>NFT Warrior Verification</span>
-                </div>
-              </div>
+              {/* Removed decorative icons and their containers */}
               
               <div className="relative">
-                 <button 
-                    onClick={toggleWalletConnection}
-                    className="w-full !bg-gradient-to-r !from-red-600 !to-red-700 hover:!from-red-700 hover:!to-red-800 !border-2 !border-red-400 !text-white !font-bold !py-4 !px-8 !text-lg !rounded-xl !transition-all !duration-300 !shadow-lg hover:!shadow-red-500/50"
-                  >
-                    Connect Wallet
-                 </button>
+                <button
+                  onClick={connect}
+                  disabled={connecting}
+                  className="w-full !bg-gradient-to-r !from-red-600 !to-red-700 hover:!from-red-700 hover:!to-red-800 !border-2 !border-red-400 !text-white !font-bold !py-4 !px-8 !text-lg !rounded-xl !transition-all !duration-300 !shadow-lg hover:!shadow-red-500/50"
+                >
+                  {connecting ? 'Connecting...' : 'Connect Wallet'}
+                </button>
                 <div className="absolute -inset-1 bg-gradient-to-r from-red-600 to-red-400 rounded-xl blur opacity-30 animate-pulse"></div>
               </div>
-            </div>
-
-            {/* Decorative Elements */}
-            <div className="mt-8 flex justify-center space-x-8 opacity-60">
-              <div className="text-red-400 animate-bounce delay-100">⚔️</div>
-              <div className="text-yellow-400 animate-bounce delay-200">🏆</div>
-              <div className="text-red-400 animate-bounce delay-300">⚔️</div>
             </div>
           </div>
         </div>
@@ -301,11 +292,9 @@ const App = () => {
       <div className="relative z-10 bg-gradient-to-r from-red-600 via-red-500 to-red-600 border-b-4 border-red-400 shadow-lg">
         <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center justify-center space-x-3">
-            <Swords className="w-8 h-8 text-white animate-pulse" />
             <h1 className="text-3xl font-bold text-white tracking-wider font-mono">
               DIGITAL DOJO
             </h1>
-            <Swords className="w-8 h-8 text-white animate-pulse" />
           </div>
           <p className="text-center text-red-100 text-sm mt-1 font-semibold">
             TRUE DEGENS WELCOME
@@ -317,7 +306,6 @@ const App = () => {
         <header className="max-w-6xl mx-auto mb-8">
           <div className="flex justify-between items-center bg-black/60 backdrop-blur-lg rounded-2xl p-6 border-2 border-red-500/50 shadow-2xl">
             <div className="flex items-center space-x-4">
-              <Coins className="w-12 h-12 text-red-500" />
               <div>
                 <h2 className="text-3xl font-bold text-white font-mono">TETO REWARDS</h2>
               </div>
@@ -325,12 +313,12 @@ const App = () => {
             <div className="flex items-center space-x-4">
                {/* Updated button to toggle connection */}
                <button
-                  onClick={toggleWalletConnection}
+                  onClick={disconnect}
                   className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded-xl transition-colors"
                 >
                   Disconnect Wallet
                </button>
-               <span className="text-white">Connected: {publicKey?.substring(0, 4)}...{publicKey?.slice(-4)}</span>
+               <span className="text-white">Connected: {truncatePublicKey(publicKey)}</span>
             </div>
           </div>
         </header>
