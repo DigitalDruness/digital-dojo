@@ -77,13 +77,8 @@
             const [verificationStatus, setVerificationStatus] = useState('');
             const [isCheckingTime, setIsCheckingTime] = useState(false);
             const [userId, setUserId] = useState(null);
-            const [isAuthReady, setIsAuthReady] = useState(false);
-            const [isFirestoreReady, setIsFirestoreReady] = useState(false);
-            const [firestore, setFirestore] = useState(null);
-            const [firebaseAuth, setFirebaseAuth] = useState(null);
-            const [doc, setDoc] = useState(null);
-            const [onSnapshot, setOnSnapshot] = useState(null);
-            
+            const [isLoading, setIsLoading] = useState(true);
+
             const heliusRpcUrl = 'https://rpc.helius.xyz/?api-key=6e2b3a8b-d410-46b1-9cc9-53d9dec76d02';
             const nftMintAddresses = [
                 'J7ZoA72tbHffX1T6hmJbwZZZvT7SU144k3bDfKxHkhKF',
@@ -109,70 +104,65 @@
                 }
             };
             
-            // Effect to load firebase modules and set state
+            // Effect to handle initialization and data fetching
             useEffect(() => {
-                const checkFirebase = setInterval(() => {
-                    if (window.firestore && window.firebaseAuth) {
-                        setFirestore(window.firestore);
-                        setFirebaseAuth(window.firebaseAuth);
-                        setDoc(() => window.firestore.doc);
-                        setOnSnapshot(() => window.firestore.onSnapshot);
-                        clearInterval(checkFirebase);
-                        console.log("Firebase libraries loaded and state set.");
-                    }
-                }, 100); // Check every 100ms
-                return () => clearInterval(checkFirebase);
-            }, []);
+                const initializeApp = async () => {
+                    if (window.firebaseAuth && window.firestore) {
+                        const auth = window.firebaseAuth.getAuth();
+                        const db = window.firestore.getFirestore();
 
-            // Effect to handle initial authentication state and set the userId.
-            useEffect(() => {
-                if (!firebaseAuth) return;
-                const authUnsubscribe = firebaseAuth.onAuthStateChanged(window.auth, (user) => {
-                    if (user) setUserId(user.uid);
-                    else setUserId(null);
-                    setIsAuthReady(true);
-                });
-                return () => authUnsubscribe();
-            }, [firebaseAuth]);
+                        const authUnsubscribe = window.firebaseAuth.onAuthStateChanged(auth, async (user) => {
+                            if (user) {
+                                setUserId(user.uid);
+                                if (publicKey) {
+                                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                                    const userDocRef = window.firestore.doc(db, `artifacts/${appId}/users/${user.uid}/data`, publicKey.toString());
 
-            // Effect to handle Firestore data subscription.
-            useEffect(() => {
-                if (!isAuthReady || !publicKey || !userId || !doc || !onSnapshot) {
-                    setIsFirestoreReady(false);
-                    return;
-                }
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const userDocRef = doc(window.db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
-
-                const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        setTetoBalance(data.tetoBalance || 0);
-                        setIsVerified(data.isVerified || false);
-                        setNftCount(data.nftCount || 0);
-                        setLastClaimTime(data.lastClaimTime || null);
-                        setVerificationStatus(data.verificationStatus || '');
+                                    const firestoreUnsubscribe = window.firestore.onSnapshot(userDocRef, (docSnap) => {
+                                        if (docSnap.exists()) {
+                                            const data = docSnap.data();
+                                            setTetoBalance(data.tetoBalance || 0);
+                                            setIsVerified(data.isVerified || false);
+                                            setNftCount(data.nftCount || 0);
+                                            setLastClaimTime(data.lastClaimTime || null);
+                                            setVerificationStatus(data.verificationStatus || '');
+                                        } else {
+                                            window.firestore.setDoc(userDocRef, {
+                                                tetoBalance: 0,
+                                                isVerified: false,
+                                                nftCount: 0,
+                                                lastClaimTime: null,
+                                                verificationStatus: ''
+                                            }).catch(e => console.error("Error creating document: ", e));
+                                            setTetoBalance(0);
+                                            setIsVerified(false);
+                                            setNftCount(0);
+                                            setLastClaimTime(null);
+                                            setVerificationStatus('');
+                                        }
+                                        setIsLoading(false); // Only set loading to false when all data is fetched
+                                    }, (error) => {
+                                        console.error("Firestore listener error:", error);
+                                        setIsLoading(false);
+                                    });
+                                    return () => firestoreUnsubscribe();
+                                } else {
+                                    setIsLoading(false); // No wallet connected, so we're done loading
+                                }
+                            } else {
+                                setIsLoading(false); // No user authenticated, so we're done loading
+                            }
+                        });
+                        return () => authUnsubscribe();
                     } else {
-                        window.firestore.setDoc(userDocRef, {
-                            tetoBalance: 0,
-                            isVerified: false,
-                            nftCount: 0,
-                            lastClaimTime: null,
-                            verificationStatus: ''
-                        }).catch(e => console.error("Error creating document: ", e));
-                        setTetoBalance(0);
-                        setIsVerified(false);
-                        setNftCount(0);
-                        setLastClaimTime(null);
-                        setVerificationStatus('');
+                         // Fallback to check again if scripts aren't loaded immediately
+                         const timer = setTimeout(initializeApp, 100);
+                         return () => clearTimeout(timer);
                     }
-                    setIsFirestoreReady(true);
-                }, (error) => {
-                    console.error("Firestore listener error:", error);
-                    setIsFirestoreReady(false);
-                });
-                return () => unsubscribe();
-            }, [isAuthReady, publicKey, userId, doc, onSnapshot]);
+                };
+
+                initializeApp();
+            }, [publicKey]);
 
             // Timer logic for the 24-hour cooldown
             useEffect(() => {
@@ -186,12 +176,12 @@
                         setTimeUntilNextClaim(timeLeft > 0 ? timeLeft : 0);
                         setIsCheckingTime(false);
                     }, 1000);
-                } else if (isAuthReady) {
+                } else if (!isLoading) {
                     setTimeUntilNextClaim(0);
                     setIsCheckingTime(false);
                 }
                 return () => { if (timerInterval) clearInterval(timerInterval); };
-            }, [lastClaimTime, isAuthReady]);
+            }, [lastClaimTime, isLoading]);
 
             const connectWallet = async (walletName) => {
                 try {
@@ -217,6 +207,7 @@
                     setWallet(selectedWallet);
                     setPublicKey(resp.publicKey);
                     setShowModal(false);
+                    setIsLoading(true); // Re-show loading page while fetching data for new wallet
                 } catch (err) {
                     console.error('Wallet connection failed:', err);
                 }
@@ -227,15 +218,16 @@
                     wallet.disconnect();
                     setPublicKey(null);
                     setWallet(null);
+                    setIsLoading(true); // Re-show loading page while data is reset
                 }
             };
 
             const verifyNFT = async () => {
-                if (!publicKey || !isAuthReady || !isFirestoreReady) return;
+                if (!publicKey || isLoading) return;
                 setIsVerifying(true);
                 setVerificationStatus('Verifying...');
                 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const userDocRef = firestore.doc(window.db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
+                const userDocRef = window.firestore.doc(window.db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
                 try {
                     const response = await fetch(heliusRpcUrl, {
                         method: 'POST',
@@ -254,24 +246,24 @@
                     const assets = data.result.items;
                     let holderCount = assets.filter(asset => nftMintAddresses.includes(asset.id)).length;
                     const isHolder = holderCount > 0;
-                    await firestore.setDoc(userDocRef, { isVerified: isHolder, nftCount: holderCount, verificationStatus: isHolder ? `Verified! You hold ${holderCount} NFTs.` : 'Not a holder.' }, { merge: true });
+                    await window.firestore.setDoc(userDocRef, { isVerified: isHolder, nftCount: holderCount, verificationStatus: isHolder ? `Verified! You hold ${holderCount} NFTs.` : 'Not a holder.' }, { merge: true });
                 } catch (error) {
                     console.error('Failed to verify NFT ownership:', error);
-                    await firestore.setDoc(userDocRef, { isVerified: false, nftCount: 0, verificationStatus: 'Verification failed. Try again.' }, { merge: true });
+                    await window.firestore.setDoc(userDocRef, { isVerified: false, nftCount: 0, verificationStatus: 'Verification failed. Try again.' }, { merge: true });
                 } finally {
                     setIsVerifying(false);
                 }
             };
 
             const claimDailyReward = async () => {
-                if (!isVerified || !publicKey || isCheckingTime || !isFirestoreReady) return;
+                if (!isVerified || !publicKey || isCheckingTime || isLoading) return;
                 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const userDocRef = firestore.doc(window.db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
+                const userDocRef = window.firestore.doc(window.db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
                 const now = await getUTCTimeFromAPI();
                 const dailyInMs = 24 * 60 * 60 * 1000;
                 if (!lastClaimTime || (now - lastClaimTime) >= dailyInMs) {
                     const reward = 10 * nftCount;
-                    await firestore.setDoc(userDocRef, { tetoBalance: tetoBalance + reward, lastClaimTime: now }, { merge: true });
+                    await window.firestore.setDoc(userDocRef, { tetoBalance: tetoBalance + reward, lastClaimTime: now }, { merge: true });
                 } else {
                      console.log('Claim not yet available. Please wait until cooldown is over.');
                 }
@@ -297,7 +289,6 @@
             const isConnected = !!publicKey;
             const canClaim = isVerified && timeUntilNextClaim === 0 && !isCheckingTime;
             const rewardAmount = nftCount * 10;
-            const isLoading = !isAuthReady || !firestore || !firebaseAuth || (isConnected && !isFirestoreReady);
 
             if (isLoading) {
                 return (
