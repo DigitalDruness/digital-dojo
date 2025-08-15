@@ -82,7 +82,7 @@
 
                 const getUTCTimeFromAPI = async () => {
                     try {
-                        const response = await fetch('http://worldtimeapi.org/api/timezone/Etc/UTC');
+                        const response = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC');
                         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                         const data = await response.json();
                         return new Date(data.datetime).getTime();
@@ -106,15 +106,17 @@
                     setAuth(authInstance);
                     setDb(dbInstance);
 
+                    // Set up the auth state listener
                     const authUnsubscribe = onAuthStateChanged(authInstance, (user) => {
                         if (user) {
                             setUserId(user.uid);
                         } else {
                             setUserId(null);
                         }
-                        setIsLoading(false);
+                        setIsLoading(false); // Set loading to false after the initial auth check
                     });
 
+                    // Perform the initial sign-in attempt
                     if (initialAuthToken) {
                         signInWithCustomToken(authInstance, initialAuthToken)
                             .then(() => console.log("Firebase signed in with custom token."))
@@ -125,6 +127,7 @@
                             .catch((error) => console.error("Firebase anonymous sign-in failed:", error));
                     }
 
+                    // Cleanup function for the listener
                     return () => authUnsubscribe();
                 }, []);
 
