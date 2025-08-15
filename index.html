@@ -15,13 +15,11 @@
     <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.91.1/lib/index.iife.js"></script>
     <!-- Firebase core, auth, and firestore -->
     <script type="module">
-        // Import all Firebase functions as a single object from their respective modules.
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import * as firestore from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import * as auth from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         
         // IMPORTANT: These are global variables provided by the Canvas environment.
-        // DO NOT change their names.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -31,9 +29,7 @@
         window.db = firestore.getFirestore(app);
         window.auth = auth.getAuth(app);
         
-        // Expose the entire Firestore and Auth modules to the global scope.
-        // This is a crucial fix that makes all their functions accessible to the React component
-        // which runs in a different script context.
+        // Expose the entire Firebase modules to the global scope
         window.firestore = firestore;
         window.firebaseAuth = auth;
         
@@ -45,7 +41,7 @@
                 console.error("Firebase custom token sign-in failed:", error);
             });
         } else {
-             // Fallback to anonymous sign-in if no custom token is available
+            // Fallback to anonymous sign-in if no custom token is available
             auth.signInAnonymously(window.auth).then(() => {
                 console.log("Firebase signed in anonymously.");
             }).catch((error) => {
@@ -69,9 +65,8 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
         const { PublicKey } = solanaWeb3;
-        // Destructure all needed functions from the global objects exposed by the module script.
-        const { doc, getDoc, setDoc, onSnapshot, updateDoc } = window.firestore;
-        const { onAuthStateChanged, signInWithCustomToken, signInAnonymously } = window.firebaseAuth;
+        const { doc, setDoc, onSnapshot, updateDoc } = window.firestore;
+        const { onAuthStateChanged } = window.firebaseAuth;
 
         // The main App component that handles all state and rendering
         const App = () => {
@@ -124,31 +119,30 @@
             };
             
             // --- Firebase Integration ---
+            // This useEffect handles the initial authentication state and sets the userId.
+            // It runs once when the component mounts.
             useEffect(() => {
-                // Set up Firebase auth state listener to get the user ID
                 const authUnsubscribe = onAuthStateChanged(window.auth, (user) => {
                     if (user) {
                         setUserId(user.uid);
-                        setIsAuthReady(true);
                     } else {
-                        console.log("No user signed in.");
                         setUserId(null);
-                        setIsAuthReady(true);
                     }
+                    setIsAuthReady(true); // Signal that auth state has been checked
                 });
                 
-                // Clean up auth listener on unmount
                 return () => authUnsubscribe();
             }, []);
 
+            // This useEffect handles the Firestore data subscription.
+            // It only runs when the app is authenticated and a public key is set.
             useEffect(() => {
-                // Ensure auth and a public key are ready before trying to fetch data
-                if (!isAuthReady || !publicKey) return;
-
-                // Create a user-specific document reference in Firestore
+                if (!isAuthReady || !publicKey || !userId) {
+                    // Do not proceed until auth is ready and a public key is set
+                    return;
+                }
                 const userDocRef = doc(window.db, `artifacts/${__app_id}/users/${userId}/data`, publicKey.toString());
 
-                // Set up a real-time listener for the user's data
                 const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
@@ -159,7 +153,6 @@
                         setVerificationStatus(data.verificationStatus || '');
                     } else {
                         console.log("User data not found in Firestore. Creating new entry.");
-                        // Create a new document if it's not present
                         setDoc(userDocRef, {
                             tetoBalance: 0,
                             isVerified: false,
@@ -177,7 +170,6 @@
                     console.error("Firestore listener error:", error);
                 });
 
-                // Clean up the listener when the component unmounts or publicKey changes
                 return () => unsubscribe();
             }, [isAuthReady, publicKey, userId]);
 
@@ -286,7 +278,6 @@
 
                     const isHolder = holderCount > 0;
                     
-                    // Update the Firestore document with the new verification data
                     await setDoc(userDocRef, {
                         isVerified: isHolder,
                         nftCount: holderCount,
@@ -295,7 +286,6 @@
 
                 } catch (error) {
                     console.error('Failed to verify NFT ownership:', error);
-                    // Update Firestore with the error status
                     await setDoc(userDocRef, {
                         isVerified: false,
                         nftCount: 0,
@@ -312,15 +302,12 @@
                 
                 const userDocRef = doc(window.db, `artifacts/${__app_id}/users/${userId}/data`, publicKey.toString());
                 
-                // Fetch current time from a reliable source to prevent client-side time manipulation
                 const now = await getUTCTimeFromAPI();
                 const dailyInMs = 24 * 60 * 60 * 1000;
                 
-                // Check if the time since the last claim is at least 24 hours
                 if (!lastClaimTime || (now - lastClaimTime) >= dailyInMs) {
-                    const reward = 10 * nftCount; // Reward is now based on NFT count
+                    const reward = 10 * nftCount;
                     
-                    // Atomically update the balance and timestamp in Firestore
                     await setDoc(userDocRef, {
                         tetoBalance: tetoBalance + reward,
                         lastClaimTime: now
@@ -352,10 +339,9 @@
             };
 
             const isConnected = !!publicKey;
-            // A claim is possible if verified AND the daily cooldown has passed
             const canClaim = isVerified && timeUntilNextClaim === 0 && !isCheckingTime;
             const rewardAmount = nftCount * 10;
-            const isLoading = !isAuthReady || (isConnected && !userId);
+            const isLoading = !isAuthReady;
 
             if (isLoading) {
                 return (
@@ -374,7 +360,7 @@
                     <div
                         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
                         style={{
-                            backgroundImage: `url('dojo-bg.jpg')`,
+                            backgroundImage: `url('https://placehold.co/1920x1080/000000/000000?text=')`,
                             filter: 'brightness(0.4)',
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
