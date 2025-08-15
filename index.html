@@ -46,10 +46,14 @@
             // Helius RPC Endpoint and API Key
             const heliusRpcUrl = 'https://rpc.helius.xyz/?api-key=6e2b3a8b-d410-46b1-9cc9-53d9dec76d02';
 
-            // Corrected mint addresses for Degen Dojo and Demon Dojo NFTs
+            // Corrected and updated mint addresses for NFT collections
             const nftMintAddresses = [
-                '2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb', // Degen Dojo
-                'dgd6We3oS4M5LSVzT6Ep39wwVpjLC336tCpyPZkLAHx'  // Demon Dojo
+                'J7ZoA72tbHffX1T6hmJbwZZZvT7SU144k3bDfKxHkhKF', // Degen Dojo original
+                '8gFdLpbWGMX1KnsLwnNcQehxshLsDP5exYSAihtvJN15',  // Demon Dojo original
+                '2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb', // New Degen Dojo
+                'dgd6We3oS4M5LSVzT6Ep39wwVpjLC336tCpyPZkLAHx',  // New Demon Dojo
+                'ED3GMCfoX3XNvavnWADvd6oCsohGg1ukdhv3PaUpvwJe', // Latest address
+                'FdpDYUWYC8PekGttXz9kPb48CxVjpiEm5NaBb3X6zExy'  // Another latest address
             ];
 
             // useEffect hook to handle side effects like local storage and the timer
@@ -298,7 +302,7 @@
                                                     </button>
                                                     <span className="text-red-900">Connected: {truncatePublicKey(publicKey)}</span>
                                                 </div>
-                                            </div>
+                                            </div >
                                         </header>
                                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                                             <div className="lg:col-span-1 space-y-6">
