@@ -16,36 +16,21 @@
     <!-- Firebase core, auth, and firestore -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import * as firestore from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import * as auth from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // IMPORTANT: These are global variables provided by the Canvas environment.
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        // Initialize Firebase app and services outside of window.onload
-        try {
-            const app = initializeApp(firebaseConfig);
-            window.db = firestore.getFirestore(app);
-            window.auth = auth.getAuth(app);
-            
-            // Expose the entire Firebase modules to the global scope
-            window.firestore = firestore;
-            window.firebaseAuth = auth;
-            
-            if (initialAuthToken) {
-                auth.signInWithCustomToken(window.auth, initialAuthToken)
-                    .then(() => console.log("Firebase signed in with custom token."))
-                    .catch((error) => console.error("Firebase custom token sign-in failed:", error));
-            } else {
-                auth.signInAnonymously(window.auth)
-                    .then(() => console.log("Firebase signed in anonymously."))
-                    .catch((error) => console.error("Firebase anonymous sign-in failed:", error));
-            }
-        } catch (e) {
-            console.error("Firebase initialization failed:", e);
-        }
+        // Expose Firebase functions to the global scope for use in the Babel script
+        window.firebase = {
+            initializeApp,
+            getAuth,
+            signInAnonymously,
+            signInWithCustomToken,
+            onAuthStateChanged,
+            getFirestore,
+            doc,
+            onSnapshot,
+            setDoc,
+        };
     </script>
     <style>
         /* Font Imports */
@@ -78,6 +63,8 @@
             const [isCheckingTime, setIsCheckingTime] = useState(false);
             const [userId, setUserId] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
+            const [db, setDb] = useState(null);
+            const [auth, setAuth] = useState(null);
 
             const heliusRpcUrl = 'https://rpc.helius.xyz/?api-key=6e2b3a8b-d410-46b1-9cc9-53d9dec76d02';
             const nftMintAddresses = [
@@ -104,65 +91,83 @@
                 }
             };
             
-            // Effect to handle initialization and data fetching
+            // Effect to handle Firebase initialization and authentication state
             useEffect(() => {
-                const initializeApp = async () => {
-                    if (window.firebaseAuth && window.firestore) {
-                        const auth = window.firebaseAuth.getAuth();
-                        const db = window.firestore.getFirestore();
+                if (typeof window.firebase === 'undefined') {
+                    // Firebase library is not yet loaded, wait and re-run this effect
+                    const timer = setTimeout(() => setIsLoading(true), 100);
+                    return () => clearTimeout(timer);
+                }
 
-                        const authUnsubscribe = window.firebaseAuth.onAuthStateChanged(auth, async (user) => {
-                            if (user) {
-                                setUserId(user.uid);
-                                if (publicKey) {
-                                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                                    const userDocRef = window.firestore.doc(db, `artifacts/${appId}/users/${user.uid}/data`, publicKey.toString());
+                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+                const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-                                    const firestoreUnsubscribe = window.firestore.onSnapshot(userDocRef, (docSnap) => {
-                                        if (docSnap.exists()) {
-                                            const data = docSnap.data();
-                                            setTetoBalance(data.tetoBalance || 0);
-                                            setIsVerified(data.isVerified || false);
-                                            setNftCount(data.nftCount || 0);
-                                            setLastClaimTime(data.lastClaimTime || null);
-                                            setVerificationStatus(data.verificationStatus || '');
-                                        } else {
-                                            window.firestore.setDoc(userDocRef, {
-                                                tetoBalance: 0,
-                                                isVerified: false,
-                                                nftCount: 0,
-                                                lastClaimTime: null,
-                                                verificationStatus: ''
-                                            }).catch(e => console.error("Error creating document: ", e));
-                                            setTetoBalance(0);
-                                            setIsVerified(false);
-                                            setNftCount(0);
-                                            setLastClaimTime(null);
-                                            setVerificationStatus('');
-                                        }
-                                        setIsLoading(false); // Only set loading to false when all data is fetched
-                                    }, (error) => {
-                                        console.error("Firestore listener error:", error);
-                                        setIsLoading(false);
-                                    });
-                                    return () => firestoreUnsubscribe();
-                                } else {
-                                    setIsLoading(false); // No wallet connected, so we're done loading
-                                }
-                            } else {
-                                setIsLoading(false); // No user authenticated, so we're done loading
-                            }
-                        });
-                        return () => authUnsubscribe();
+                const app = window.firebase.initializeApp(firebaseConfig);
+                const authInstance = window.firebase.getAuth(app);
+                const dbInstance = window.firebase.getFirestore(app);
+
+                setAuth(authInstance);
+                setDb(dbInstance);
+
+                const authUnsubscribe = window.firebase.onAuthStateChanged(authInstance, (user) => {
+                    if (user) {
+                        setUserId(user.uid);
                     } else {
-                         // Fallback to check again if scripts aren't loaded immediately
-                         const timer = setTimeout(initializeApp, 100);
-                         return () => clearTimeout(timer);
+                        setUserId(null);
                     }
-                };
+                    // This is the signal that authentication is ready
+                    setIsLoading(false);
+                });
 
-                initializeApp();
-            }, [publicKey]);
+                if (initialAuthToken) {
+                    window.firebase.signInWithCustomToken(authInstance, initialAuthToken)
+                        .then(() => console.log("Firebase signed in with custom token."))
+                        .catch((error) => console.error("Firebase custom token sign-in failed:", error));
+                } else {
+                    window.firebase.signInAnonymously(authInstance)
+                        .then(() => console.log("Firebase signed in anonymously."))
+                        .catch((error) => console.error("Firebase anonymous sign-in failed:", error));
+                }
+                
+                return () => authUnsubscribe();
+            }, []);
+
+            // Effect to handle Firestore data subscription
+            useEffect(() => {
+                if (!db || !userId || !publicKey) {
+                    return;
+                }
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const userDocRef = window.firebase.doc(db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
+
+                const unsubscribe = window.firebase.onSnapshot(userDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        setTetoBalance(data.tetoBalance || 0);
+                        setIsVerified(data.isVerified || false);
+                        setNftCount(data.nftCount || 0);
+                        setLastClaimTime(data.lastClaimTime || null);
+                        setVerificationStatus(data.verificationStatus || '');
+                    } else {
+                        window.firebase.setDoc(userDocRef, {
+                            tetoBalance: 0,
+                            isVerified: false,
+                            nftCount: 0,
+                            lastClaimTime: null,
+                            verificationStatus: ''
+                        }).catch(e => console.error("Error creating document: ", e));
+                        setTetoBalance(0);
+                        setIsVerified(false);
+                        setNftCount(0);
+                        setLastClaimTime(null);
+                        setVerificationStatus('');
+                    }
+                }, (error) => {
+                    console.error("Firestore listener error:", error);
+                });
+                
+                return () => unsubscribe();
+            }, [db, userId, publicKey]);
 
             // Timer logic for the 24-hour cooldown
             useEffect(() => {
@@ -207,7 +212,6 @@
                     setWallet(selectedWallet);
                     setPublicKey(resp.publicKey);
                     setShowModal(false);
-                    setIsLoading(true); // Re-show loading page while fetching data for new wallet
                 } catch (err) {
                     console.error('Wallet connection failed:', err);
                 }
@@ -218,16 +222,15 @@
                     wallet.disconnect();
                     setPublicKey(null);
                     setWallet(null);
-                    setIsLoading(true); // Re-show loading page while data is reset
                 }
             };
 
             const verifyNFT = async () => {
-                if (!publicKey || isLoading) return;
+                if (!publicKey || isLoading || !db || !userId) return;
                 setIsVerifying(true);
                 setVerificationStatus('Verifying...');
                 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const userDocRef = window.firestore.doc(window.db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
+                const userDocRef = window.firebase.doc(db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
                 try {
                     const response = await fetch(heliusRpcUrl, {
                         method: 'POST',
@@ -246,24 +249,24 @@
                     const assets = data.result.items;
                     let holderCount = assets.filter(asset => nftMintAddresses.includes(asset.id)).length;
                     const isHolder = holderCount > 0;
-                    await window.firestore.setDoc(userDocRef, { isVerified: isHolder, nftCount: holderCount, verificationStatus: isHolder ? `Verified! You hold ${holderCount} NFTs.` : 'Not a holder.' }, { merge: true });
+                    await window.firebase.setDoc(userDocRef, { isVerified: isHolder, nftCount: holderCount, verificationStatus: isHolder ? `Verified! You hold ${holderCount} NFTs.` : 'Not a holder.' }, { merge: true });
                 } catch (error) {
                     console.error('Failed to verify NFT ownership:', error);
-                    await window.firestore.setDoc(userDocRef, { isVerified: false, nftCount: 0, verificationStatus: 'Verification failed. Try again.' }, { merge: true });
+                    await window.firebase.setDoc(userDocRef, { isVerified: false, nftCount: 0, verificationStatus: 'Verification failed. Try again.' }, { merge: true });
                 } finally {
                     setIsVerifying(false);
                 }
             };
 
             const claimDailyReward = async () => {
-                if (!isVerified || !publicKey || isCheckingTime || isLoading) return;
+                if (!isVerified || !publicKey || isCheckingTime || isLoading || !db || !userId) return;
                 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const userDocRef = window.firestore.doc(window.db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
+                const userDocRef = window.firebase.doc(db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
                 const now = await getUTCTimeFromAPI();
                 const dailyInMs = 24 * 60 * 60 * 1000;
                 if (!lastClaimTime || (now - lastClaimTime) >= dailyInMs) {
                     const reward = 10 * nftCount;
-                    await window.firestore.setDoc(userDocRef, { tetoBalance: tetoBalance + reward, lastClaimTime: now }, { merge: true });
+                    await window.firebase.setDoc(userDocRef, { tetoBalance: tetoBalance + reward, lastClaimTime: now }, { merge: true });
                 } else {
                      console.log('Claim not yet available. Please wait until cooldown is over.');
                 }
