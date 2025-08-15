@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digital Dojo</title>
-    <!-- Tailwind CSS CDN -->
+    <!-- Tailwind CSS CDN for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Solana Wallet Adapter CDN -->
     <script src="https://unpkg.com/@solana/wallet-adapter-phantom@0.9.15/dist/bundle.iife.js"></script>
@@ -40,25 +40,12 @@
     <!-- Background Image and Overlay -->
     <div
         class="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style="background-image: url('https://placehold.co/1920x1080/000000/ffffff?text=Dojo+Background'); filter: brightness(0.4); background-size: cover; background-position: center;">
+        style="background-image: url('dojo-bg.jpg.jpg'); filter: brightness(0.4); background-size: cover; background-position: center;">
     </div>
     <div class="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80"></div>
 
-    <!-- Digital-Dojo Red Banner -->
-    <div class="relative z-10 bg-gradient-to-r from-red-600 via-red-500 to-red-600 border-b-4 border-red-400 shadow-lg">
-        <div class="max-w-6xl mx-auto px-4 py-3">
-            <div class="flex items-center justify-center space-x-3">
-                <h1 class="text-3xl font-bold text-red-900 tracking-wider">
-                    <span class="font-zen-antique text-4xl">⛩</span>
-                    <span class="font-noto-sans-jp text-4xl">DIGITAL DOJO</span>
-                    <span class="font-zen-antique text-4xl">⛩</span>
-                </h1>
-            </div>
-        </div>
-    </div>
-
     <!-- Main Content Container -->
-    <div class="relative z-10 flex items-center justify-center min-h-[calc(100vh-120px)] p-4">
+    <div class="relative z-10 flex items-center justify-center min-h-screen p-4">
         <div class="text-center max-w-2xl w-full">
             <div id="app-container" class="bg-black/30 backdrop-blur-lg rounded-3xl p-10 border-2 border-red-500/50 shadow-2xl">
                 <!-- Content will be injected here by JavaScript -->
@@ -120,9 +107,10 @@
 
         // Utility function to format time in minutes and seconds
         const formatTime = (ms) => {
+            if (ms <= 0) return 'Ready to Claim!';
             const minutes = Math.floor(ms / (1000 * 60));
             const seconds = Math.floor((ms % (1000 * 60)) / 1000);
-            return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         };
 
         // Utility function to truncate the public key for display
@@ -262,6 +250,11 @@
                 tetoBalance = parseInt(localStorage.getItem(`teto_balance_${pubKeyStr}`)) || 0;
                 lastClaimTime = parseInt(localStorage.getItem(`last_claim_${pubKeyStr}`)) || null;
                 isVerified = JSON.parse(localStorage.getItem(`verified_${pubKeyStr}`)) || false;
+                
+                // For demonstration, let's assume verification is successful for now.
+                // In a real app, this would be a check against a blockchain.
+                isVerified = true;
+                localStorage.setItem(`verified_${pubKeyStr}`, JSON.stringify(true));
 
                 // Start or restart the timer
                 if (timerInterval) clearInterval(timerInterval);
@@ -327,9 +320,8 @@
                 localStorage.setItem(`teto_balance_${pubKeyStr}`, tetoBalance.toString());
                 localStorage.setItem(`last_claim_${pubKeyStr}`, lastClaimTime.toString());
                 
-                // For a real app, you would also call a smart contract here to record the claim
                 showMessage(`Claimed 10 TETO! New balance: ${tetoBalance}`);
-                updateUI();
+                loadState(); // Reload the state to refresh the timer
             } else {
                 showMessage("It's not time to claim yet!");
             }
