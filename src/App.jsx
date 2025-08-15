@@ -324,7 +324,7 @@ export default function App() {
             <div className="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
               <h3 className="text-2xl font-bold text-red-900 mb-4 font-['VT323']">NFT Verification</h3>
               <p className="text-red-200 font-['VT323']">
-                {nftCount > 0 ? `You are a verified NFT warrior! (${nftCount} NFT${nftCount > 1 ? 's' : ''})` : 'Not Verified'}
+                {nftCount > 0 ? `You are a true degen! (${nftCount} NFT${nftCount > 1 ? 's' : ''})` : 'Not Verified'}
               </p>
             </div>
             <div className="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
