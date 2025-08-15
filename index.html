@@ -36,7 +36,8 @@
             const [tetoBalance, setTetoBalance] = useState(0);
             const [isVerified, setIsVerified] = useState(false);
             const [isVerifying, setIsVerifying] = useState(false);
-            const [lastClaimTime, setLastClaimTime] = useState(null);
+            const [nftCount, setNftCount] = useState(0); // State variable for NFT count
+            const [lastClaimDate, setLastClaimDate] = useState(null); // Stores the date of the last claim
             const [timeUntilNextClaim, setTimeUntilNextClaim] = useState(0);
             const [wallet, setWallet] = useState(null);
             const [publicKey, setPublicKey] = useState(null);
@@ -46,7 +47,7 @@
             // Helius RPC Endpoint and API Key
             const heliusRpcUrl = 'https://rpc.helius.xyz/?api-key=6e2b3a8b-d410-46b1-9cc9-53d9dec76d02';
 
-            // Corrected and updated mint addresses for NFT collections
+            // Mint addresses for the NFT collections
             const nftMintAddresses = [
                 'J7ZoA72tbHffX1T6hmJbwZZZvT7SU144k3bDfKxHkhKF', // Degen Dojo original
                 '8gFdLpbWGMX1KnsLwnNcQehxshLsDP5exYSAihtvJN15',  // Demon Dojo original
@@ -59,6 +60,23 @@
                 'HEyazxpV2wxMUvNx53UZUXthRS9Rjsbv7hoHYJNbVedC'   // Latest address
             ];
 
+            // Function to get a reliable, non-local timestamp from a public API
+            const getCentralTimeNow = async () => {
+                try {
+                    const response = await fetch('http://worldtimeapi.org/api/timezone/America/Chicago');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    return new Date(data.datetime);
+                } catch (error) {
+                    console.error('Failed to fetch server time:', error);
+                    // Fallback to local time if API fails, with a warning
+                    console.warn('Using local time as a fallback. This may be inaccurate.');
+                    return new Date();
+                }
+            };
+            
             // useEffect hook to handle side effects like local storage and the timer
             useEffect(() => {
                 let timerInterval = null;
@@ -67,29 +85,38 @@
                     // Load state from local storage on component mount or when publicKey changes
                     const pubKey = publicKey.toString();
                     const savedBalance = localStorage.getItem(`teto_balance_${pubKey}`);
-                    const savedLastClaim = localStorage.getItem(`last_claim_${pubKey}`);
+                    const savedLastClaimDate = localStorage.getItem(`last_claim_date_${pubKey}`);
                     const savedVerification = localStorage.getItem(`verified_${pubKey}`);
                     const savedVerificationStatus = localStorage.getItem(`verification_status_${pubKey}`);
+                    const savedNftCount = localStorage.getItem(`nft_count_${pubKey}`);
 
                     setTetoBalance(savedBalance ? parseInt(savedBalance) : 0);
-                    setLastClaimTime(savedLastClaim ? parseInt(savedLastClaim) : null);
+                    setLastClaimDate(savedLastClaimDate || null);
                     setIsVerified(savedVerification === 'true');
                     setVerificationStatus(savedVerificationStatus || '');
+                    setNftCount(savedNftCount ? parseInt(savedNftCount) : 0);
 
-                    // Set up the hourly claim timer
-                    timerInterval = setInterval(() => {
-                        const now = Date.now();
-                        const hourInMs = 60 * 60 * 1000;
-                        const lastClaim = savedLastClaim ? parseInt(savedLastClaim) : now;
-                        const timeSinceLastClaim = now - lastClaim;
-                        const timeLeft = hourInMs - timeSinceLastClaim;
+                    // Set up the daily claim timer based on a server timestamp
+                    timerInterval = setInterval(async () => {
+                        const now = await getCentralTimeNow();
+                        const resetTime = new Date(now);
+                        resetTime.setHours(19, 0, 0, 0); // Set reset time to 7 PM (19:00) Central Time
+
+                        let timeLeft = resetTime.getTime() - now.getTime();
+                        if (timeLeft < 0) {
+                            // If it's already past 7 PM, the timer should count down to 7 PM tomorrow
+                            resetTime.setDate(now.getDate() + 1);
+                            timeLeft = resetTime.getTime() - now.getTime();
+                        }
+                        
                         setTimeUntilNextClaim(timeLeft > 0 ? timeLeft : 0);
                     }, 1000);
                 } else {
                     // Reset state if no public key
                     setTetoBalance(0);
                     setIsVerified(false);
-                    setLastClaimTime(null);
+                    setNftCount(0);
+                    setLastClaimDate(null);
                     setTimeUntilNextClaim(0);
                     setVerificationStatus('');
                 }
@@ -140,9 +167,10 @@
                     setPublicKey(null);
                     setWallet(null);
                     localStorage.removeItem(`teto_balance_${publicKey.toString()}`);
-                    localStorage.removeItem(`last_claim_${publicKey.toString()}`);
+                    localStorage.removeItem(`last_claim_date_${publicKey.toString()}`);
                     localStorage.removeItem(`verified_${publicKey.toString()}`);
                     localStorage.removeItem(`verification_status_${publicKey.toString()}`);
+                    localStorage.removeItem(`nft_count_${publicKey.toString()}`);
                 }
             };
 
@@ -172,57 +200,78 @@
 
                     const data = await response.json();
                     const assets = data.result.items;
-                    let isHolder = false;
+                    let holderCount = 0;
 
-                    // Iterate through the NFTs returned by Helius
+                    // Iterate through the NFTs returned by Helius to count owned NFTs
                     for (const asset of assets) {
                         if (nftMintAddresses.includes(asset.id)) {
-                            isHolder = true;
-                            break;
+                            holderCount++;
                         }
                     }
 
+                    const isHolder = holderCount > 0;
                     setIsVerified(isHolder);
-                    setVerificationStatus(isHolder ? 'Verified!' : 'Not a holder.');
+                    setNftCount(holderCount);
+                    setVerificationStatus(isHolder ? `Verified! You hold ${holderCount} NFTs.` : 'Not a holder.');
+                    
                     localStorage.setItem(`verified_${publicKey.toString()}`, isHolder.toString());
-                    localStorage.setItem(`verification_status_${publicKey.toString()}`, isHolder ? 'Verified!' : 'Not a holder.');
+                    localStorage.setItem(`verification_status_${publicKey.toString()}`, isHolder ? `Verified! You hold ${holderCount} NFTs.` : 'Not a holder.');
+                    localStorage.setItem(`nft_count_${publicKey.toString()}`, holderCount.toString());
 
                 } catch (error) {
                     console.error('Failed to verify NFT ownership:', error);
                     setVerificationStatus('Verification failed. Try again.');
                     setIsVerified(false);
+                    setNftCount(0);
                     localStorage.setItem(`verified_${publicKey.toString()}`, 'false');
                     localStorage.setItem(`verification_status_${publicKey.toString()}`, 'Verification failed. Try again.');
+                    localStorage.setItem(`nft_count_${publicKey.toString()}`, '0');
                 } finally {
                     setIsVerifying(false);
                 }
             };
 
-            // Function to handle the hourly reward claim
-            const claimHourlyReward = () => {
+            // Function to handle the daily reward claim
+            const claimDailyReward = async () => {
                 if (!isVerified || !publicKey) return;
                 
-                const now = Date.now();
-                const hourInMs = 60 * 60 * 1000;
+                const now = await getCentralTimeNow();
+                const today = now.toISOString().split('T')[0]; // Get the YYYY-MM-DD date string
                 
-                if (!lastClaimTime || (now - lastClaimTime) >= hourInMs) {
-                    const reward = 10;
+                // Check if a claim has already been made today in Central Time
+                if (lastClaimDate === today) {
+                    console.log('You have already claimed today.');
+                    return;
+                }
+
+                // Check if the current time is after 7 PM Central Time
+                const resetHour = 19; // 7 PM in 24-hour format
+                if (now.getHours() >= resetHour) {
+                    const reward = 10 * nftCount; // Reward is now based on NFT count
                     const newBalance = tetoBalance + reward;
                     setTetoBalance(newBalance);
-                    setLastClaimTime(now);
+                    setLastClaimDate(today);
                     
                     const pubKey = publicKey.toString();
                     localStorage.setItem(`teto_balance_${pubKey}`, newBalance.toString());
-                    localStorage.setItem(`last_claim_${pubKey}`, now.toString());
+                    localStorage.setItem(`last_claim_date_${pubKey}`, today);
+                } else {
+                     console.log('Claim not yet available. Please wait until 7 PM Central Time.');
                 }
             };
 
-            // Utility function to format time in minutes and seconds
+            // Utility function to format time in HH:MM:SS
             const formatTime = (ms) => {
                 if (ms <= 0) return 'Ready!';
-                const minutes = Math.floor(ms / (1000 * 60));
-                const seconds = Math.floor((ms % (1000 * 60)) / 1000);
-                return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                const seconds = Math.floor(ms / 1000);
+                const minutes = Math.floor(seconds / 60);
+                const hours = Math.floor(minutes / 60);
+
+                const displayHours = String(hours).padStart(2, '0');
+                const displayMinutes = String(minutes % 60).padStart(2, '0');
+                const displaySeconds = String(seconds % 60).padStart(2, '0');
+                
+                return `${displayHours}:${displayMinutes}:${displaySeconds}`;
             };
 
             // Utility function to truncate the public key for display
@@ -233,7 +282,9 @@
             };
 
             const isConnected = !!publicKey;
-            const canClaim = isVerified && timeUntilNextClaim <= 0;
+            // A claim is possible if verified AND the daily cooldown has passed
+            const canClaim = isVerified && timeUntilNextClaim === 0;
+            const rewardAmount = nftCount * 10;
 
             return (
                 <div className="bg-gray-900 text-white min-h-screen relative overflow-hidden font-vt323">
@@ -261,13 +312,13 @@
                                                 TRUE DEGENS WELCOME
                                             </h3>
                                             <p className="text-red-200 text-lg leading-relaxed">
-                                                Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-900 font-bold">Teto</span> rewards every hour and test your luck on the <span className="text-red-900 font-bold">Wheel</span>!
+                                                Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-900 font-bold">Teto</span> rewards every day and test your luck on the <span className="text-red-900 font-bold">Wheel</span>!
                                             </p>
                                         </div>
                                         <div className="text-center mb-6">
                                             <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
                                                 <span className="text-red-900">⛩</span>
-                                                <span>Hourly Teto Rewards</span>
+                                                <span>Daily Teto Rewards</span>
                                             </p>
                                             <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
                                                 <span className="text-red-900">⛩</span>
@@ -358,8 +409,8 @@
                                                         id="claim-reward-btn"
                                                         className={`w-full mt-6 py-3 px-6 rounded-xl font-bold transition-all duration-300 font-vt323 ${!canClaim ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-green-500/50'}`}
                                                         disabled={!canClaim}
-                                                        onClick={claimHourlyReward}>
-                                                        Claim 10 TETO
+                                                        onClick={claimDailyReward}>
+                                                        Claim {rewardAmount} TETO
                                                     </button>
                                                 </div>
                                             </div>
