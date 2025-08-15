@@ -1,392 +1,414 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 
-const App = () => {
-    // State for Firebase and Solana initialization
-    const [tetoBalance, setTetoBalance] = useState(0);
-    const [isVerified, setIsVerified] = useState(false);
-    const [isVerifying, setIsVerifying] = useState(false);
-    const [nftCount, setNftCount] = useState(0);
-    const [lastClaimTime, setLastClaimTime] = useState(null);
-    const [timeUntilNextClaim, setTimeUntilNextClaim] = useState(0);
-    const [wallet, setWallet] = useState(null);
-    const [publicKey, setPublicKey] = useState(null);
-    const [showModal, setShowModal] = useState(false);
-    const [verificationStatus, setVerificationStatus] = useState('');
-    const [isCheckingTime, setIsCheckingTime] = useState(false);
-    const [userId, setUserId] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [db, setDb] = useState(null);
-    const [auth, setAuth] = useState(null);
+// --- Global variables provided by the Canvas environment ---
+// These are necessary for Firebase to work.
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
 
-    const heliusRpcUrl = 'https://rpc.helius.xyz/?api-key=6e2b3a8b-d410-46b1-9cc9-53d9dec76d02';
-    const nftMintAddresses = [
-        'J7ZoA72tbHffX1T6hmJbwZZZvT7SU144k3bDfKxHkhKF',
-        '8gFdLpbWGMX1KnsLwnNcQehxshLsDP5exYSAihtvJN15',
-        '2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb',
-        'dgd6We3oS4M4LSVzT6Ep39wwVpjLC336tCpyPZkLAHx',
-        'ED3GMCfoX3XNvavnWADvd6oCsohGg1ukdhv3PaUpvwJe',
-        'FdpDYUWYC8PekGttXz9kPb48CxVjpiEm5NaBb3X6zExy',
-        'B6WhJ15NYp6vxJD3K8hCxZUUqpap1kngHKE66GczGNrg',
-        'DoJoE6b8Lbb1t8qcdm4qDRXLS7RvadZo9Rfz8xq2VgLx',
-        'HEyazxpV2wxMUvNx53UZUXthRS9Rjsbv7hoHYJNbVedC'
-    ];
+// --- Helius API Configuration ---
+// Your Helius API key and the collection mint addresses
+const heliusApiKey = "6e2b3a8b-d410-46b1-9cc9-53d9dec76d02";
+const heliusEndpoint = `https://rpc.helius.xyz/?api-key=${heliusApiKey}`;
 
-    const getUTCTimeFromAPI = async () => {
-        try {
-            const response = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC');
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const data = await response.json();
-            return new Date(data.datetime).getTime();
-        } catch (error) {
-            console.error('Failed to fetch server time:', error);
-            return Date.now();
-        }
-    };
+const collectionMintAddresses = [
+  '2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb',
+  'DmRQEKrjRHrEVT8TNc7kWLjKbCv7RTn672LrgpnFagah',
+  'FdpDYUWYC8PekGttXz9kPb48CxVjpiEm5NaBb3X6zExy',
+  'HEyazxpV2wxMUvNx53UZUXthRS9Rjsbv7hoHYJNbVedC',
+  'DoJoE6b8Lbb1t8qcdm4qDRXLS7RvadZo9Rfz8xq2VgLx'
+];
 
-    // This useEffect handles all initial setup, now that we are sure the scripts are loaded.
-    useEffect(() => {
-        console.log('Initializing Firebase.');
-        
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+// --- Utility Functions ---
 
-        const app = initializeApp(firebaseConfig);
-        const authInstance = getAuth(app);
-        const dbInstance = getFirestore(app);
+// Simple message box for user feedback
+const showMessage = (message) => {
+  const messageBox = document.getElementById('messageBox');
+  if (messageBox) {
+    messageBox.textContent = message;
+    messageBox.style.display = 'block';
+    setTimeout(() => {
+      messageBox.style.display = 'none';
+    }, 5000);
+  }
+};
 
-        setAuth(authInstance);
-        setDb(dbInstance);
+// Formats time into a readable string
+const formatTime = (ms) => {
+  if (ms <= 0) return 'Ready to Claim!';
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((ms % (1000 * 60)) / 1000);
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
 
-        // Set up the auth state listener
-        const authUnsubscribe = onAuthStateChanged(authInstance, (user) => {
-            if (user) {
-                setUserId(user.uid);
-            } else {
-                setUserId(null);
-            }
-            setIsLoading(false); // Set loading to false after the initial auth check
-        });
+// Truncates a public key for display
+const truncatePublicKey = (key) => {
+  if (!key) return '';
+  const keyStr = key.toString();
+  return `${keyStr.substring(0, 4)}...${keyStr.slice(-4)}`;
+};
 
-        // Perform the initial sign-in attempt
+// Placeholder Icons as inline SVG strings
+const icons = {
+  Coins: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-yellow-400">
+            <circle cx="8" cy="8" r="6" />
+            <path d="M18.09 10.37A6 6 0 1 1 10.34 18M7 6h1.22a9 9 0 0 0 6.66 12.66" />
+          </svg>`,
+  Clock: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-red-400">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>`,
+  Trophy: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-yellow-400">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+            <path d="M4.5 15.5H19.5" />
+            <path d="M12 17.5v3" />
+            <path d="M19.5 9h-15V4a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1z" />
+            <path d="M12 17.5a2.5 2.5 0 0 1-2.5-2.5v-10h5v10a2.5 2.5 0 0 1-2.5 2.5z" />
+          </svg>`,
+};
+
+// Main App Component
+export default function App() {
+  const [wallet, setWallet] = useState(null);
+  const [publicKey, setPublicKey] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [tetoBalance, setTetoBalance] = useState(0);
+  const [lastClaimTimestamp, setLastClaimTimestamp] = useState(null);
+  const [nftCount, setNftCount] = useState(0);
+  const [timeUntilNextClaim, setTimeUntilNextClaim] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // --- Firebase Setup and Authentication ---
+  useEffect(() => {
+    try {
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+
+      const handleAuth = async () => {
         if (initialAuthToken) {
-            signInWithCustomToken(authInstance, initialAuthToken)
-                .then(() => console.log("Firebase signed in with custom token."))
-                .catch((error) => console.error("Firebase custom token sign-in failed:", error));
+          await signInWithCustomToken(auth, initialAuthToken);
         } else {
-            signInAnonymously(authInstance)
-                .then(() => console.log("Firebase signed in anonymously."))
-                .catch((error) => console.error("Firebase anonymous sign-in failed:", error));
+          await signInAnonymously(auth);
         }
-
-        // Cleanup function for the listener
-        return () => authUnsubscribe();
-    }, []);
-
-    // Effect to handle Firestore data subscription
-    useEffect(() => {
-        if (!db || !userId || !publicKey) {
-            return;
-        }
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
-
-        const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      };
+      
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          setIsAuthReady(true);
+          // Set up real-time listener for user data once authenticated
+          const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'tetoRewards', 'userData');
+          onSnapshot(userDocRef, (docSnap) => {
             if (docSnap.exists()) {
-                const data = docSnap.data();
-                setTetoBalance(data.tetoBalance || 0);
-                setIsVerified(data.isVerified || false);
-                setNftCount(data.nftCount || 0);
-                setLastClaimTime(data.lastClaimTime || null);
-                setVerificationStatus(data.verificationStatus || '');
+              const data = docSnap.data();
+              setTetoBalance(data.balance || 0);
+              setLastClaimTimestamp(data.lastClaimTimestamp || null);
+              setNftCount(data.nftCount || 0);
+              setIsLoading(false);
             } else {
-                setDoc(userDocRef, {
-                    tetoBalance: 0,
-                    isVerified: false,
-                    nftCount: 0,
-                    lastClaimTime: null,
-                    verificationStatus: ''
-                }).catch(e => console.error("Error creating document: ", e));
+              // Create a new document for the user if it doesn't exist
+              setDoc(userDocRef, {
+                balance: 0,
+                lastClaimTimestamp: null,
+                nftCount: 0,
+              }).then(() => {
                 setTetoBalance(0);
-                setIsVerified(false);
+                setLastClaimTimestamp(null);
                 setNftCount(0);
-                setLastClaimTime(null);
-                setVerificationStatus('');
+                setIsLoading(false);
+              }).catch(error => {
+                console.error("Error creating user document:", error);
+                showMessage("Error setting up user data.");
+                setIsLoading(false);
+              });
             }
-        }, (error) => {
-            console.error("Firestore listener error:", error);
-        });
-
-        return () => unsubscribe();
-    }, [db, userId, publicKey]);
-
-    // Timer logic for the 24-hour cooldown
-    useEffect(() => {
-        let timerInterval = null;
-        const dailyInMs = 24 * 60 * 60 * 1000;
-        if (lastClaimTime !== null) {
-            timerInterval = setInterval(async () => {
-                const now = await getUTCTimeFromAPI();
-                const timeSinceLastClaim = now - lastClaimTime;
-                const timeLeft = dailyInMs - timeSinceLastClaim;
-                setTimeUntilNextClaim(timeLeft > 0 ? timeLeft : 0);
-                setIsCheckingTime(false);
-            }, 1000);
-        } else if (!isLoading) {
-            setTimeUntilNextClaim(0);
-            setIsCheckingTime(false);
-        }
-        return () => { if (timerInterval) clearInterval(timerInterval); };
-    }, [lastClaimTime, isLoading]);
-
-    const connectWallet = async (walletName) => {
-        try {
-            // Solana Web3.js is still an external dependency, but we assume it's available.
-            // If it's not, the error would happen here, not on initial load.
-            const { PublicKey } = solanaWeb3;
-            let selectedWallet = null;
-            if (walletName === 'Phantom') {
-                if (!window.solana || !window.solana.isPhantom) {
-                    console.log('Phantom wallet not found. Please install it.');
-                    setShowModal(false);
-                    return;
-                }
-                selectedWallet = window.solana;
-            } else if (walletName === 'Solflare') {
-                if (!window.solflare) {
-                    console.log('Solflare wallet not found. Please install it.');
-                    setShowModal(false);
-                    return;
-                }
-                selectedWallet = window.solflare;
-            } else {
-                return;
-            }
-            const resp = await selectedWallet.connect();
-            setWallet(selectedWallet);
-            setPublicKey(resp.publicKey);
-            setShowModal(false);
-        } catch (err) {
-            console.error('Wallet connection failed:', err);
-        }
-    };
-
-    const disconnectWallet = () => {
-        if (wallet) {
-            wallet.disconnect();
-            setPublicKey(null);
-            setWallet(null);
-        }
-    };
-
-    const verifyNFT = async () => {
-        if (!publicKey || isLoading || !db || !userId) return;
-        setIsVerifying(true);
-        setVerificationStatus('Verifying...');
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
-        try {
-            const response = await fetch(heliusRpcUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: 'my-id',
-                    method: 'getAssetsByOwner',
-                    params: {
-                        ownerAddress: publicKey.toString(),
-                        displayOptions: { showFungible: false, showUnverifiedCollections: false, showCollectionMetadata: true }
-                    }
-                })
-            });
-            const data = await response.json();
-            const assets = data.result.items;
-            let holderCount = assets.filter(asset => nftMintAddresses.includes(asset.id)).length;
-            const isHolder = holderCount > 0;
-            await setDoc(userDocRef, { isVerified: isHolder, nftCount: holderCount, verificationStatus: isHolder ? `Verified! You hold ${holderCount} NFTs.` : 'Not a holder.' }, { merge: true });
-        } catch (error) {
-            console.error('Failed to verify NFT ownership:', error);
-            await setDoc(userDocRef, { isVerified: false, nftCount: 0, verificationStatus: 'Verification failed. Try again.' }, { merge: true });
-        } finally {
-            setIsVerifying(false);
-        }
-    };
-
-    const claimDailyReward = async () => {
-        if (!isVerified || !publicKey || isCheckingTime || isLoading || !db || !userId) return;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
-        const now = await getUTCTimeFromAPI();
-        const dailyInMs = 24 * 60 * 60 * 1000;
-        if (!lastClaimTime || (now - lastClaimTime) >= dailyInMs) {
-            const reward = 10 * nftCount;
-            await setDoc(userDocRef, { tetoBalance: tetoBalance + reward, lastClaimTime: now }, { merge: true });
+          });
         } else {
-            console.log('Claim not yet available. Please wait until cooldown is over.');
+          setIsAuthReady(true);
+          setIsLoading(false);
         }
-    };
+      });
+      handleAuth();
+    } catch (error) {
+      console.error("Firebase initialization failed:", error);
+      showMessage("Failed to initialize the app. Check console for details.");
+      setIsLoading(false);
+    }
+  }, []);
 
-    const formatTime = (ms) => {
-        if (ms <= 0) return 'Ready!';
-        const seconds = Math.floor(ms / 1000);
-        const minutes = Math.floor(seconds / 60);
-        const hours = Math.floor(minutes / 60);
-        const displayHours = String(hours).padStart(2, '0');
-        const displayMinutes = String(minutes % 60).padStart(2, '0');
-        const displaySeconds = String(seconds % 60).padStart(2, '0');
-        return `${displayHours}:${displayMinutes}:${displaySeconds}`;
-    };
+  // --- Timer useEffect ---
+  useEffect(() => {
+    let timerInterval;
+    if (lastClaimTimestamp !== null && nftCount > 0) {
+      timerInterval = setInterval(() => {
+        const now = Date.now();
+        const dailyCooldown = 24 * 60 * 60 * 1000;
+        const timeSinceLastClaim = now - lastClaimTimestamp;
+        const timeLeft = dailyCooldown - timeSinceLastClaim;
+        setTimeUntilNextClaim(timeLeft > 0 ? timeLeft : 0);
+      }, 1000);
+    } else {
+        setTimeUntilNextClaim(0);
+    }
 
-    const truncatePublicKey = (key) => {
-        if (!key) return '';
-        const keyStr = key.toString();
-        return `${keyStr.substring(0, 4)}...${keyStr.slice(-4)}`;
-    };
+    return () => clearInterval(timerInterval);
+  }, [lastClaimTimestamp, nftCount]);
 
-    const isConnected = !!publicKey;
-    const canClaim = isVerified && timeUntilNextClaim === 0 && !isCheckingTime;
-    const rewardAmount = nftCount * 10;
+  // --- Helius API: Check NFT count ---
+  const checkNFTCount = async (ownerPublicKey) => {
+    try {
+      const response = await fetch(heliusEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getAssetsByOwner',
+          params: {
+            ownerAddress: ownerPublicKey.toString(),
+            page: 1,
+          },
+        }),
+      });
 
+      const { result } = await response.json();
+      
+      if (!result || !result.items || result.items.length === 0) {
+        return 0;
+      }
+
+      const verifiedNfts = result.items.filter(item => {
+        const collectionKey = item.content?.metadata?.collection?.key;
+        return collectionKey && collectionMintAddresses.includes(collectionKey);
+      });
+      
+      return verifiedNfts.length;
+    } catch (error) {
+      console.error('Error during Helius API verification:', error);
+      showMessage('Error verifying NFT status. Check console for details.');
+      return 0;
+    }
+  };
+
+  // --- Wallet and Database Operations ---
+  const connectWallet = async () => {
+    try {
+      const { solana } = window;
+      if (solana && solana.isPhantom) {
+        const response = await solana.connect();
+        setWallet(solana);
+        setPublicKey(response.publicKey);
+        
+        // After connecting, check for NFTs and update Firestore
+        const count = await checkNFTCount(response.publicKey);
+        const db = getFirestore();
+        const auth = getAuth();
+        const userId = auth.currentUser.uid;
+        const userDocRef = doc(db, 'artifacts', appId, 'users', userId, 'tetoRewards', 'userData');
+        await updateDoc(userDocRef, { nftCount: count });
+
+        showMessage(`Wallet connected: ${truncatePublicKey(response.publicKey)}`);
+      } else {
+        showMessage('Phantom wallet not found! Please install Phantom.');
+      }
+    } catch (error) {
+      console.error('Failed to connect wallet:', error);
+      showMessage('Failed to connect wallet. See console for details.');
+    }
+  };
+
+  const disconnectWallet = async () => {
+    if (wallet) {
+      await wallet.disconnect();
+      setWallet(null);
+      setPublicKey(null);
+      setLastClaimTimestamp(null);
+      setTetoBalance(0);
+      setNftCount(0);
+      showMessage('Wallet disconnected.');
+    }
+  };
+
+  const claimDailyReward = async () => {
+    if (!isAuthReady || !publicKey || nftCount === 0 || timeUntilNextClaim > 0) return;
+    
+    const db = getFirestore();
+    const auth = getAuth();
+    const userId = auth.currentUser.uid;
+    const userDocRef = doc(db, 'artifacts', appId, 'users', userId, 'tetoRewards', 'userData');
+    
+    try {
+      const newReward = nftCount * 10;
+      const newBalance = tetoBalance + newReward;
+      const now = Date.now();
+      
+      await updateDoc(userDocRef, {
+        balance: newBalance,
+        lastClaimTimestamp: now,
+      });
+
+      showMessage(`Claimed ${newReward} TETO! New balance: ${newBalance}`);
+    } catch (error) {
+      console.error("Error claiming reward:", error);
+      showMessage("Failed to claim reward. Please try again.");
+    }
+  };
+
+  // --- Conditional Rendering ---
+  const renderContent = () => {
     if (isLoading) {
-        return (
-            <div className="bg-gray-900 text-white min-h-screen flex items-center justify-center font-vt323">
-                <div className="text-center">
-                    <h2 className="text-3xl font-bold text-red-900 mb-4 animate-pulse">Loading...</h2>
-                    <p className="text-red-200">Initializing app and connecting to database.</p>
-                </div>
-            </div>
-        );
+      return (
+        <div className="flex items-center justify-center p-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-red-500"></div>
+        </div>
+      );
+    }
+
+    if (!publicKey) {
+      return (
+        <div>
+          <div className="mb-6">
+            <h3 className="text-3xl font-bold text-red-900 mb-4 font-['Noto Sans JP']">
+              TRUE DEGENS WELCOME
+            </h3>
+            <p className="text-red-200 text-lg leading-relaxed">
+              Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-900 font-bold">Teto</span> rewards every 24 hours and test your luck on the <span className="text-red-900 font-bold">Wheel</span>!
+            </p>
+          </div>
+          <div className="text-center mb-6">
+            <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
+              <span className="text-red-900">⛩</span>
+              <span>Daily Teto Rewards</span>
+            </p>
+            <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
+              <span className="text-red-900">⛩</span>
+              <span>Lottery Wheel Gambling</span>
+            </p>
+            <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
+              <span className="text-red-900">⛩</span>
+              <span>Degen Duels</span>
+            </p>
+          </div>
+          <div className="relative">
+            <button onClick={connectWallet} className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 border-2 border-red-400 text-white font-bold py-4 px-8 text-lg rounded-xl transition-all duration-300 shadow-lg hover:shadow-red-500/50">
+              Connect Wallet
+            </button>
+            <div className="absolute -inset-1 bg-gradient-to-r from-red-600 to-red-400 rounded-xl blur opacity-30 animate-pulse"></div>
+          </div>
+        </div>
+      );
     }
 
     return (
-        <div className="bg-gray-900 text-white min-h-screen relative overflow-hidden font-vt323">
-            <div
-                className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-                style={{
-                    backgroundImage: `url('https://placehold.co/1920x1080/000000/000000?text=')`,
-                    filter: 'brightness(0.4)',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                }}>
+      <div>
+        <header className="mb-8">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-3xl font-bold text-red-900 font-['VT323']">TETO REWARDS</h2>
             </div>
-            <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
-                <div className="text-center max-w-2xl">
-                    <div id="app-container" className="bg-black/40 backdrop-blur-sm rounded-3xl p-10 border-2 border-red-500/50 shadow-2xl">
-                        {!isConnected ? (
-                            <div>
-                                <div className="mb-6">
-                                    <h3 className="text-3xl font-bold text-red-900 mb-4 font-noto-sans-jp">TRUE DEGENS WELCOME</h3>
-                                    <p className="text-red-200 text-lg leading-relaxed">Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-900 font-bold">Teto</span> rewards every day and test your luck on the <span className="text-red-900 font-bold">Wheel</span>!</p>
-                                </div>
-                                <div className="text-center mb-6">
-                                    <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
-                                        <span className="text-red-900">⛩</span><span>Daily Teto Rewards</span>
-                                    </p>
-                                    <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
-                                        <span className="text-red-900">⛩</span><span>Lottery Wheel Gambling</span>
-                                    </p>
-                                    <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
-                                        <span className="text-red-900">⛩</span><span>Degen Duels</span>
-                                    </p>
-                                </div>
-                                <div className="relative">
-                                    <button
-                                        id="connect-button"
-                                        className="wallet-connect-button relative z-20"
-                                        onClick={() => setShowModal(true)}>Connect Wallet</button>
-                                    <div className="absolute -inset-1 bg-gradient-to-r from-red-600 to-red-400 rounded-xl opacity-90 animate-pulse z-10"></div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div>
-                                <header className="mb-8">
-                                    <div className="flex justify-between items-center">
-                                        <div><h2 className="text-3xl font-bold text-red-900">TETO REWARDS</h2></div>
-                                        <div className="flex items-center space-x-4">
-                                            <button
-                                                id="disconnect-button"
-                                                className="bg-gray-700 hover:bg-gray-800 text-red-900 font-bold py-2 px-4 rounded-xl transition-colors"
-                                                onClick={disconnectWallet}>Disconnect</button>
-                                            <span className="text-red-900">Connected: {truncatePublicKey(publicKey)}</span>
-                                        </div>
-                                    </div>
-                                </header>
-                                <div className="space-y-6">
-                                    <div className="bg-black/40 backdrop-blur-sm rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
-                                        <h3 className="text-2xl font-bold text-red-900 mb-4 font-vt323">NFT Verification</h3>
-                                        {isVerified ? (
-                                            <p className="text-red-200 font-vt323">You are a verified True Degen!</p>
-                                        ) : (
-                                            <>
-                                                <p className="text-red-200 font-vt323 mb-4">Verify your NFT to claim rewards.</p>
-                                                <button
-                                                    id="verify-nft-btn"
-                                                    className={`w-full py-3 px-6 rounded-xl font-bold transition-all duration-300 font-vt323 ${isVerifying ? 'bg-yellow-600 text-yellow-100 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-red-500/50'}`}
-                                                    disabled={isVerifying}
-                                                    onClick={verifyNFT}>
-                                                    {isVerifying ? 'Verifying...' : 'Verify NFT'}
-                                                </button>
-                                                {verificationStatus && <p className="mt-4 text-center text-red-400 font-vt323">{verificationStatus}</p>}
-                                            </>
-                                        )}
-                                    </div>
-                                    <div className="bg-black/40 backdrop-blur-sm rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
-                                        <h3 className="text-2xl font-bold text-red-900 mb-4 font-vt323">Teto Rewards</h3>
-                                        <div className="flex items-center space-x-2 mt-4">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-yellow-400">
-                                                <circle cx="8" cy="8" r="6" /><path d="M18.09 10.37A6 6 0 1 1 10.34 18M7 6h1.22a9 9 0 0 0 6.66 12.66" />
-                                            </svg>
-                                            <span className="text-4xl font-bold text-red-900 font-vt323">{tetoBalance} TETO</span>
-                                        </div>
-                                        <div className="mt-4">
-                                            <div className="flex items-center justify-between text-red-200 font-vt323">
-                                                <div className="flex items-center space-x-2">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-red-400">
-                                                        <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-                                                    </svg>
-                                                    <span>Next Claim:</span>
-                                                </div>
-                                                <span id="claim-timer" className="text-xl font-bold">{isCheckingTime ? 'Checking time...' : (isVerified ? formatTime(timeUntilNextClaim) : 'Not Verified')}</span>
-                                            </div>
-                                        </div>
-                                        <button
-                                            id="claim-reward-btn"
-                                            className={`w-full mt-6 py-3 px-6 rounded-xl font-bold transition-all duration-300 font-vt323 ${!canClaim ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-green-500/50'}`}
-                                            disabled={!canClaim}
-                                            onClick={claimDailyReward}>Claim {rewardAmount} TETO</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
+            <div className="flex items-center space-x-4">
+              <button onClick={disconnectWallet} className="bg-gray-700 hover:bg-gray-800 text-red-900 font-bold py-2 px-4 rounded-xl transition-colors">
+                Disconnect
+              </button>
+              <span className="text-red-900">Connected: {truncatePublicKey(publicKey)}</span>
             </div>
-            {showModal && (
-                <div id="wallet-modal" className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                    <div className="bg-black/80 p-6 rounded-lg shadow-xl max-w-sm w-full border-2 border-red-500/50">
-                        <h3 className="text-2xl font-bold text-red-900 mb-4">Connect Wallet</h3>
-                        <div id="wallet-options" className="space-y-4">
-                            <button
-                                className="wallet-option-btn w-full py-3 px-6 rounded-lg text-white font-bold bg-gray-800 hover:bg-gray-700 transition-colors"
-                                onClick={() => connectWallet('Phantom')}>
-                                <img src="https://phantom.app/ul/v1/logo.svg" alt="Phantom" className="w-6 h-6 inline-block mr-2" />Phantom
-                            </button>
-                            <button
-                                className="wallet-option-btn w-full py-3 px-6 rounded-lg text-white font-bold bg-gray-800 hover:bg-gray-700 transition-colors"
-                                onClick={() => connectWallet('Solflare')}>
-                                <img src="https://solflare.com/logo.svg" alt="Solflare" className="w-6 h-6 inline-block mr-2" />Solflare
-                            </button>
-                        </div>
-                        <button
-                            id="modal-close-btn"
-                            className="mt-4 w-full py-2 px-6 rounded-lg text-red-400 font-bold hover:text-red-300"
-                            onClick={() => setShowModal(false)}>Cancel</button>
-                    </div>
+          </div>
+        </header>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
+              <h3 className="text-2xl font-bold text-red-900 mb-4 font-['VT323']">NFT Verification</h3>
+              <p className="text-red-200 font-['VT323']">
+                {nftCount > 0 ? `You are a verified NFT warrior! (${nftCount} NFT${nftCount > 1 ? 's' : ''})` : 'Not Verified'}
+              </p>
+            </div>
+            <div className="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
+              <h3 className="text-2xl font-bold text-red-900 mb-4 font-['VT323']">Teto Rewards</h3>
+              <div className="flex items-center space-x-2 mt-4">
+                <span dangerouslySetInnerHTML={{ __html: icons.Coins }} />
+                <span className="text-4xl font-bold text-red-900 font-['VT323']">{tetoBalance} TETO</span>
+              </div>
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-red-200 font-['VT323']">
+                  <div className="flex items-center space-x-2">
+                    <span dangerouslySetInnerHTML={{ __html: icons.Clock }} />
+                    <span>Next Claim:</span>
+                  </div>
+                  <span className="text-xl font-bold">
+                    {nftCount > 0 ? formatTime(timeUntilNextClaim) : 'Not Verified'}
+                  </span>
                 </div>
-            )}
+              </div>
+              <button
+                onClick={claimDailyReward}
+                className={`w-full mt-6 py-3 px-6 rounded-xl font-bold transition-all duration-300 font-['VT323'] ${
+                  nftCount > 0 && timeUntilNextClaim <= 0
+                    ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-green-500/50'
+                    : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                }`}
+                disabled={nftCount === 0 || timeUntilNextClaim > 0}
+              >
+                Claim {nftCount * 10} TETO
+              </button>
+            </div>
+          </div>
+          <div className="lg:col-span-2">
+            <div className="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
+              <h3 className="text-2xl font-bold text-red-900 mb-4 font-['VT323']">Lottery Wheel</h3>
+              <p className="text-red-200 font-['VT323']">
+                The wheel of fortune is not yet implemented.
+              </p>
+            </div>
+          </div>
         </div>
+      </div>
     );
-};
-export default App;
+  };
+
+  return (
+    <div className="bg-gray-900 text-white min-h-screen relative overflow-hidden font-['VT323']">
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css2?family=VT323&family=Noto+Sans+JP:wght@700&family=Zen+Antique&display=swap');
+          body {
+              font-family: 'VT323', monospace;
+              background-color: #1f2937;
+          }
+          .wallet-connect-button {
+              @apply w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 border-2 border-red-400 text-white font-bold py-4 px-8 text-lg rounded-xl transition-all duration-300 shadow-lg hover:shadow-red-500/50;
+          }
+          .message-box {
+              position: fixed;
+              bottom: 1rem;
+              right: 1rem;
+              z-index: 1000;
+              background-color: #333;
+              color: white;
+              padding: 1rem;
+              border-radius: 0.5rem;
+              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+              display: none;
+          }
+        `}
+      </style>
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: "url('https://placehold.co/1920x1080/1a202c/ffffff?text=Dojo+Background')", filter: 'brightness(0.4)' }}>
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80"></div>
+      <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
+        <div className="text-center max-w-2xl w-full">
+          <div id="app-container" className="bg-black/30 backdrop-blur-lg rounded-3xl p-10 border-2 border-red-500/50 shadow-2xl">
+            {renderContent()}
+          </div>
+        </div>
+      </div>
+      <div id="messageBox" className="message-box"></div>
+    </div>
+  );
+}
