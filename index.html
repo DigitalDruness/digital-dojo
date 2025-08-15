@@ -11,6 +11,8 @@
     <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
     <!-- Babel for JSX transpilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Solana Web3.js for blockchain interaction -->
+    <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.91.1/lib/index.iife.js"></script>
     <style>
         /* Font Imports */
         @import url('https://fonts.googleapis.com/css2?family=VT323&family=Noto+Sans+JP:wght@700&family=Zen+Antique&display=swap');
@@ -26,6 +28,8 @@
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useEffect } = React;
+        // Fix: Use the correct global variable name 'solanaWeb3' instead of 'SolanaWeb3'
+        const { PublicKey } = solanaWeb3;
 
         // The main App component that handles all state and rendering
         const App = () => {
@@ -38,13 +42,15 @@
             const [wallet, setWallet] = useState(null);
             const [publicKey, setPublicKey] = useState(null);
             const [showModal, setShowModal] = useState(false);
+            const [verificationStatus, setVerificationStatus] = useState('');
 
-            // A simulated list of public keys that "hold" the required NFTs.
-            // In a real application, this would be a blockchain check.
-            const verifiedAddresses = [
-                '5F1W4wVqR6zDk8bBv3qQ4aZ6gE7H8jY9iL0mN2oP',
-                'BxN7QdG3jK9P5hT2rF1eV6wM0zL8yA4uI0oP3eG',
-                '9hXbS5Qc2dF8pA3yR1tE6zW4mN7kL9jH0oG2rC',
+            // Helius RPC Endpoint and API Key (replace with your actual API key)
+            const heliusRpcUrl = 'https://rpc.helius.xyz/?api-key=6e2b3a8b-d410-46b1-9cc9-53d9dec76d02';
+
+            // Mint addresses for Degen Dojo and Demon Dojo NFTs
+            const nftMintAddresses = [
+                'J7ZoA72tbHffX1T6hmJbwZZZvT7SU144k3bDfKxHkhKF', // Degen Dojo
+                '8gFdLpbWGMX1KnsLwnNcQehxshLsDP5exYSAihtvJN15'  // Demon Dojo
             ];
 
             // useEffect hook to handle side effects like local storage and the timer
@@ -57,10 +63,12 @@
                     const savedBalance = localStorage.getItem(`teto_balance_${pubKey}`);
                     const savedLastClaim = localStorage.getItem(`last_claim_${pubKey}`);
                     const savedVerification = localStorage.getItem(`verified_${pubKey}`);
+                    const savedVerificationStatus = localStorage.getItem(`verification_status_${pubKey}`);
 
                     setTetoBalance(savedBalance ? parseInt(savedBalance) : 0);
                     setLastClaimTime(savedLastClaim ? parseInt(savedLastClaim) : null);
                     setIsVerified(savedVerification === 'true');
+                    setVerificationStatus(savedVerificationStatus || '');
 
                     // Set up the hourly claim timer
                     timerInterval = setInterval(() => {
@@ -77,6 +85,7 @@
                     setIsVerified(false);
                     setLastClaimTime(null);
                     setTimeUntilNextClaim(0);
+                    setVerificationStatus('');
                 }
 
                 // Cleanup function for the timer
@@ -127,21 +136,60 @@
                     localStorage.removeItem(`teto_balance_${publicKey.toString()}`);
                     localStorage.removeItem(`last_claim_${publicKey.toString()}`);
                     localStorage.removeItem(`verified_${publicKey.toString()}`);
+                    localStorage.removeItem(`verification_status_${publicKey.toString()}`);
                 }
             };
 
-            // Function to handle the NFT verification check
+            // Function to handle the NFT verification check using the Helius API
             const verifyNFT = async () => {
                 setIsVerifying(true);
-                // Simulate an API call delay
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
-                const pubKey = publicKey.toString();
-                const isHolder = verifiedAddresses.includes(pubKey);
+                setVerificationStatus('Verifying...');
 
-                setIsVerified(isHolder);
-                localStorage.setItem(`verified_${pubKey}`, isHolder ? 'true' : 'false');
-                setIsVerifying(false);
+                try {
+                    const response = await fetch(heliusRpcUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            jsonrpc: '2.0',
+                            id: 'my-id',
+                            method: 'getAssetsByOwner',
+                            params: {
+                                ownerAddress: publicKey.toString(),
+                                displayOptions: {
+                                    showFungible: false,
+                                    showUnverifiedCollections: false,
+                                    showCollectionMetadata: true
+                                }
+                            }
+                        })
+                    });
+
+                    const data = await response.json();
+                    const assets = data.result.items;
+                    let isHolder = false;
+
+                    // Iterate through the NFTs returned by Helius
+                    for (const asset of assets) {
+                        if (nftMintAddresses.includes(asset.id)) {
+                            isHolder = true;
+                            break;
+                        }
+                    }
+
+                    setIsVerified(isHolder);
+                    setVerificationStatus(isHolder ? 'Verified!' : 'Not a holder.');
+                    localStorage.setItem(`verified_${publicKey.toString()}`, isHolder.toString());
+                    localStorage.setItem(`verification_status_${publicKey.toString()}`, isHolder ? 'Verified!' : 'Not a holder.');
+
+                } catch (error) {
+                    console.error('Failed to verify NFT ownership:', error);
+                    setVerificationStatus('Verification failed. Try again.');
+                    setIsVerified(false);
+                    localStorage.setItem(`verified_${publicKey.toString()}`, 'false');
+                    localStorage.setItem(`verification_status_${publicKey.toString()}`, 'Verification failed. Try again.');
+                } finally {
+                    setIsVerifying(false);
+                }
             };
 
             // Function to handle the hourly reward claim
@@ -219,7 +267,7 @@
                                                 <span className="text-red-900">⛩</span>
                                                 <span>Lottery Wheel Gambling</span>
                                             </p>
-                                            <p className="text-red-200 font-semibold flex items-center justify-center space-x-2">
+                                            <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
                                                 <span className="text-red-900">⛩</span>
                                                 <span>Degen Duels</span>
                                             </p>
@@ -273,6 +321,7 @@
                                                                 onClick={verifyNFT}>
                                                                 {isVerifying ? 'Verifying...' : 'Verify NFT'}
                                                             </button>
+                                                            {verificationStatus && <p className="mt-4 text-center text-red-400 font-vt323">{verificationStatus}</p>}
                                                         </>
                                                     )}
                                                 </div>
