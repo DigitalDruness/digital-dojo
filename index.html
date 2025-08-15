@@ -28,7 +28,6 @@
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useEffect } = React;
-        // Fix: Use the correct global variable name 'solanaWeb3' instead of 'SolanaWeb3'
         const { PublicKey } = solanaWeb3;
 
         // The main App component that handles all state and rendering
@@ -44,13 +43,13 @@
             const [showModal, setShowModal] = useState(false);
             const [verificationStatus, setVerificationStatus] = useState('');
 
-            // Helius RPC Endpoint and API Key (replace with your actual API key)
+            // Helius RPC Endpoint and API Key
             const heliusRpcUrl = 'https://rpc.helius.xyz/?api-key=6e2b3a8b-d410-46b1-9cc9-53d9dec76d02';
 
-            // Mint addresses for Degen Dojo and Demon Dojo NFTs
+            // Corrected mint addresses for Degen Dojo and Demon Dojo NFTs
             const nftMintAddresses = [
-                'J7ZoA72tbHffX1T6hmJbwZZZvT7SU144k3bDfKxHkhKF', // Degen Dojo
-                '8gFdLpbWGMX1KnsLwnNcQehxshLsDP5exYSAihtvJN15'  // Demon Dojo
+                '2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb', // Degen Dojo
+                'dgd6We3oS4M5LSVzT6Ep39wwVpjLC336tCpyPZkLAHx'  // Demon Dojo
             ];
 
             // useEffect hook to handle side effects like local storage and the timer
