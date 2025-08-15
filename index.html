@@ -32,11 +32,20 @@
             // State variables to manage the application's data and UI
             const [tetoBalance, setTetoBalance] = useState(0);
             const [isVerified, setIsVerified] = useState(false);
+            const [isVerifying, setIsVerifying] = useState(false);
             const [lastClaimTime, setLastClaimTime] = useState(null);
             const [timeUntilNextClaim, setTimeUntilNextClaim] = useState(0);
             const [wallet, setWallet] = useState(null);
             const [publicKey, setPublicKey] = useState(null);
             const [showModal, setShowModal] = useState(false);
+
+            // A simulated list of public keys that "hold" the required NFTs.
+            // In a real application, this would be a blockchain check.
+            const verifiedAddresses = [
+                '5F1W4wVqR6zDk8bBv3qQ4aZ6gE7H8jY9iL0mN2oP',
+                'BxN7QdG3jK9P5hT2rF1eV6wM0zL8yA4uI0oP3eG',
+                '9hXbS5Qc2dF8pA3yR1tE6zW4mN7kL9jH0oG2rC',
+            ];
 
             // useEffect hook to handle side effects like local storage and the timer
             useEffect(() => {
@@ -51,13 +60,14 @@
 
                     setTetoBalance(savedBalance ? parseInt(savedBalance) : 0);
                     setLastClaimTime(savedLastClaim ? parseInt(savedLastClaim) : null);
-                    setIsVerified(savedVerification ? JSON.parse(savedVerification) : false);
+                    setIsVerified(savedVerification === 'true');
 
                     // Set up the hourly claim timer
                     timerInterval = setInterval(() => {
                         const now = Date.now();
                         const hourInMs = 60 * 60 * 1000;
-                        const timeSinceLastClaim = now - (savedLastClaim ? parseInt(savedLastClaim) : now);
+                        const lastClaim = savedLastClaim ? parseInt(savedLastClaim) : now;
+                        const timeSinceLastClaim = now - lastClaim;
                         const timeLeft = hourInMs - timeSinceLastClaim;
                         setTimeUntilNextClaim(timeLeft > 0 ? timeLeft : 0);
                     }, 1000);
@@ -120,6 +130,20 @@
                 }
             };
 
+            // Function to handle the NFT verification check
+            const verifyNFT = async () => {
+                setIsVerifying(true);
+                // Simulate an API call delay
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const pubKey = publicKey.toString();
+                const isHolder = verifiedAddresses.includes(pubKey);
+
+                setIsVerified(isHolder);
+                localStorage.setItem(`verified_${pubKey}`, isHolder ? 'true' : 'false');
+                setIsVerifying(false);
+            };
+
             // Function to handle the hourly reward claim
             const claimHourlyReward = () => {
                 if (!isVerified || !publicKey) return;
@@ -141,6 +165,7 @@
 
             // Utility function to format time in minutes and seconds
             const formatTime = (ms) => {
+                if (ms <= 0) return 'Ready!';
                 const minutes = Math.floor(ms / (1000 * 60));
                 const seconds = Math.floor((ms % (1000 * 60)) / 1000);
                 return `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -232,9 +257,24 @@
                                             <div className="lg:col-span-1 space-y-6">
                                                 <div className="bg-black/40 backdrop-blur-sm rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
                                                     <h3 className="text-2xl font-bold text-red-900 mb-4 font-vt323">NFT Verification</h3>
-                                                    <p className="text-red-200 font-vt323">
-                                                        {isVerified ? "You are a verified NFT warrior!" : "Verify your NFT to claim rewards."}
-                                                    </p>
+                                                    {isVerified ? (
+                                                        <p className="text-red-200 font-vt323">
+                                                            You are a verified True Degen!
+                                                        </p>
+                                                    ) : (
+                                                        <>
+                                                            <p className="text-red-200 font-vt323 mb-4">
+                                                                Verify your NFT to claim rewards.
+                                                            </p>
+                                                            <button
+                                                                id="verify-nft-btn"
+                                                                className={`w-full py-3 px-6 rounded-xl font-bold transition-all duration-300 font-vt323 ${isVerifying ? 'bg-yellow-600 text-yellow-100 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-red-500/50'}`}
+                                                                disabled={isVerifying}
+                                                                onClick={verifyNFT}>
+                                                                {isVerifying ? 'Verifying...' : 'Verify NFT'}
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                                 <div className="bg-black/40 backdrop-blur-sm rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
                                                     <h3 className="text-2xl font-bold text-red-900 mb-4 font-vt323">Teto Rewards</h3>
