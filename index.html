@@ -15,10 +15,11 @@
     <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.91.1/lib/index.iife.js"></script>
     <!-- Firebase core, auth, and firestore -->
     <script type="module">
+        // Import all Firebase functions as a single object from their respective modules.
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
+        import * as firestore from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import * as auth from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        
         // IMPORTANT: These are global variables provided by the Canvas environment.
         // DO NOT change their names.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -27,23 +28,25 @@
 
         // Initialize Firebase app and services
         const app = initializeApp(firebaseConfig);
-        window.db = getFirestore(app);
-        window.auth = getAuth(app);
+        window.db = firestore.getFirestore(app);
+        window.auth = auth.getAuth(app);
         
-        // Expose Firebase functions to the global scope for the React component
-        window.firestore = { doc, getDoc, setDoc, onSnapshot, updateDoc };
-        window.firebaseAuth = { onAuthStateChanged };
-
+        // Expose the entire Firestore and Auth modules to the global scope.
+        // This is a crucial fix that makes all their functions accessible to the React component
+        // which runs in a different script context.
+        window.firestore = firestore;
+        window.firebaseAuth = auth;
+        
         // Use the provided custom auth token to sign in
         if (initialAuthToken) {
-            signInWithCustomToken(window.auth, initialAuthToken).then(() => {
+            auth.signInWithCustomToken(window.auth, initialAuthToken).then(() => {
                 console.log("Firebase signed in with custom token.");
             }).catch((error) => {
                 console.error("Firebase custom token sign-in failed:", error);
             });
         } else {
              // Fallback to anonymous sign-in if no custom token is available
-            signInAnonymously(window.auth).then(() => {
+            auth.signInAnonymously(window.auth).then(() => {
                 console.log("Firebase signed in anonymously.");
             }).catch((error) => {
                 console.error("Firebase anonymous sign-in failed:", error);
@@ -66,8 +69,9 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
         const { PublicKey } = solanaWeb3;
-        const { getDoc, doc, setDoc, onSnapshot, updateDoc } = window.firestore;
-        const { onAuthStateChanged } = window.firebaseAuth;
+        // Destructure all needed functions from the global objects exposed by the module script.
+        const { doc, getDoc, setDoc, onSnapshot, updateDoc } = window.firestore;
+        const { onAuthStateChanged, signInWithCustomToken, signInAnonymously } = window.firebaseAuth;
 
         // The main App component that handles all state and rendering
         const App = () => {
@@ -121,9 +125,7 @@
             
             // --- Firebase Integration ---
             useEffect(() => {
-                let unsubscribe = () => {};
-                
-                // Set up Firebase auth state listener
+                // Set up Firebase auth state listener to get the user ID
                 const authUnsubscribe = onAuthStateChanged(window.auth, (user) => {
                     if (user) {
                         setUserId(user.uid);
@@ -140,6 +142,7 @@
             }, []);
 
             useEffect(() => {
+                // Ensure auth and a public key are ready before trying to fetch data
                 if (!isAuthReady || !publicKey) return;
 
                 // Create a user-specific document reference in Firestore
@@ -156,7 +159,7 @@
                         setVerificationStatus(data.verificationStatus || '');
                     } else {
                         console.log("User data not found in Firestore. Creating new entry.");
-                        // Create a new document if it doesn't exist
+                        // Create a new document if it's not present
                         setDoc(userDocRef, {
                             tetoBalance: 0,
                             isVerified: false,
