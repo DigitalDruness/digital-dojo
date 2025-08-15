@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, getDocs, query } from 'firebase/firestore';
 
 // --- Global variables provided by the Canvas environment ---
 // These are necessary for Firebase to work.
@@ -10,7 +10,6 @@ const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__f
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
 
 // --- Helius API Configuration ---
-// Your Helius API key and the collection mint addresses
 const heliusApiKey = "6e2b3a8b-d410-46b1-9cc9-53d9dec76d02";
 const heliusEndpoint = `https://rpc.helius.xyz/?api-key=${heliusApiKey}`;
 
@@ -81,7 +80,9 @@ export default function App() {
   const [lastClaimTimestamp, setLastClaimTimestamp] = useState(null);
   const [nftCount, setNftCount] = useState(0);
   const [timeUntilNextClaim, setTimeUntilNextClaim] = useState(0);
+  const [canClaim, setCanClaim] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [leaderboardData, setLeaderboardData] = useState([]);
 
   // --- Firebase Setup and Authentication ---
   useEffect(() => {
@@ -141,23 +142,65 @@ export default function App() {
     }
   }, []);
 
-  // --- Timer useEffect ---
+  // --- Timer and Claim Availability Logic ---
   useEffect(() => {
     let timerInterval;
-    if (lastClaimTimestamp !== null && nftCount > 0) {
-      timerInterval = setInterval(() => {
-        const now = Date.now();
-        const dailyCooldown = 24 * 60 * 60 * 1000;
-        const timeSinceLastClaim = now - lastClaimTimestamp;
-        const timeLeft = dailyCooldown - timeSinceLastClaim;
-        setTimeUntilNextClaim(timeLeft > 0 ? timeLeft : 0);
-      }, 1000);
-    } else {
-        setTimeUntilNextClaim(0);
-    }
+
+    const updateClaimStatus = () => {
+      const now = new Date();
+      
+      // Calculate the timestamp for 7 PM US Central Time on the current day
+      const resetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 19, 0, 0);
+      
+      // If the current time is before 7 PM CST, the last reset was yesterday at 7 PM
+      if (now < resetTime) {
+        resetTime.setDate(resetTime.getDate() - 1);
+      }
+      
+      // A user can claim if they have NFTs AND their last claim was before the last reset time
+      const canClaimNow = nftCount > 0 && (lastClaimTimestamp === null || lastClaimTimestamp < resetTime.getTime());
+      setCanClaim(canClaimNow);
+      
+      // Calculate time until next reset for the countdown display
+      const nextReset = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 19, 0, 0);
+      if (now > nextReset) {
+        nextReset.setDate(nextReset.getDate() + 1);
+      }
+      
+      const timeUntilReset = nextReset.getTime() - now.getTime();
+      setTimeUntilNextClaim(timeUntilReset > 0 ? timeUntilReset : 0);
+    };
+
+    updateClaimStatus();
+    timerInterval = setInterval(updateClaimStatus, 1000);
 
     return () => clearInterval(timerInterval);
   }, [lastClaimTimestamp, nftCount]);
+
+  // --- Leaderboard useEffect ---
+  useEffect(() => {
+    if (!isAuthReady) return;
+    const db = getFirestore();
+    const leaderboardColRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+    
+    // Listen for real-time updates to the leaderboard collection
+    const unsubscribe = onSnapshot(leaderboardColRef, (querySnapshot) => {
+        const topHolders = [];
+        querySnapshot.forEach((doc) => {
+            topHolders.push(doc.data());
+        });
+        
+        // Sort the data in-memory and get the top 5
+        topHolders.sort((a, b) => b.balance - a.balance);
+        setLeaderboardData(topHolders.slice(0, 5));
+    }, (error) => {
+        console.error("Error fetching leaderboard data:", error);
+        console.warn("This is likely a Firestore permission error. Please ensure your Firebase Security Rules for the 'leaderboard' collection allow reads for authenticated users.");
+        showMessage("Could not load leaderboard data.");
+    });
+
+    return () => unsubscribe(); // Cleanup the listener
+  }, [isAuthReady]);
 
   // --- Helius API: Check NFT count ---
   const checkNFTCount = async (ownerPublicKey) => {
@@ -235,22 +278,30 @@ export default function App() {
   };
 
   const claimDailyReward = async () => {
-    if (!isAuthReady || !publicKey || nftCount === 0 || timeUntilNextClaim > 0) return;
+    if (!isAuthReady || !publicKey || !canClaim) return;
     
     const db = getFirestore();
     const auth = getAuth();
     const userId = auth.currentUser.uid;
     const userDocRef = doc(db, 'artifacts', appId, 'users', userId, 'tetoRewards', 'userData');
+    const leaderboardDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', userId);
     
     try {
       const newReward = nftCount * 10;
       const newBalance = tetoBalance + newReward;
       const now = Date.now();
       
+      // Update user's private document
       await updateDoc(userDocRef, {
         balance: newBalance,
         lastClaimTimestamp: now,
       });
+
+      // Update or create user's public leaderboard entry
+      await setDoc(leaderboardDocRef, {
+        walletAddress: publicKey.toString(),
+        balance: newBalance,
+      }, { merge: true });
 
       showMessage(`Claimed ${newReward} TETO! New balance: ${newBalance}`);
     } catch (error) {
@@ -347,11 +398,11 @@ export default function App() {
               <button
                 onClick={claimDailyReward}
                 className={`w-full mt-6 py-3 px-6 rounded-xl font-bold transition-all duration-300 font-['VT323'] ${
-                  nftCount > 0 && timeUntilNextClaim <= 0
+                  canClaim
                     ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-green-500/50'
                     : 'bg-gray-700 text-gray-400 cursor-not-allowed'
                 }`}
-                disabled={nftCount === 0 || timeUntilNextClaim > 0}
+                disabled={!canClaim}
               >
                 Claim {nftCount * 10} TETO
               </button>
@@ -365,6 +416,37 @@ export default function App() {
               </p>
             </div>
           </div>
+        </div>
+        
+        {/* Leaderboard Section */}
+        <div className="mt-12 bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
+          <h3 className="text-2xl font-bold text-red-900 mb-6 font-['VT323'] text-center">Top Degens</h3>
+          <table className="min-w-full text-left text-red-200 font-['VT323']">
+            <thead>
+              <tr className="border-b border-red-500/50">
+                <th className="py-2 px-4 text-center">Rank</th>
+                <th className="py-2 px-4">Wallet</th>
+                <th className="py-2 px-4 text-right">TETO Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leaderboardData.length > 0 ? (
+                leaderboardData.map((user, index) => (
+                  <tr key={index} className="border-b border-red-500/20">
+                    <td className="py-2 px-4 text-center text-red-400 font-bold">{index + 1}</td>
+                    <td className="py-2 px-4">{user.walletAddress}</td>
+                    <td className="py-2 px-4 text-right">{user.balance}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="3" className="py-4 text-center text-red-400">
+                    No leaderboard data available. Be the first to claim!
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     );
