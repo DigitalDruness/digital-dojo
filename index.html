@@ -24,29 +24,27 @@
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        // Initialize Firebase app and services
-        const app = initializeApp(firebaseConfig);
-        window.db = firestore.getFirestore(app);
-        window.auth = auth.getAuth(app);
-        
-        // Expose the entire Firebase modules to the global scope
-        window.firestore = firestore;
-        window.firebaseAuth = auth;
-        
-        // Use the provided custom auth token to sign in
-        if (initialAuthToken) {
-            auth.signInWithCustomToken(window.auth, initialAuthToken).then(() => {
-                console.log("Firebase signed in with custom token.");
-            }).catch((error) => {
-                console.error("Firebase custom token sign-in failed:", error);
-            });
-        } else {
-            // Fallback to anonymous sign-in if no custom token is available
-            auth.signInAnonymously(window.auth).then(() => {
-                console.log("Firebase signed in anonymously.");
-            }).catch((error) => {
-                console.error("Firebase anonymous sign-in failed:", error);
-            });
+        // Initialize Firebase app and services outside of window.onload
+        try {
+            const app = initializeApp(firebaseConfig);
+            window.db = firestore.getFirestore(app);
+            window.auth = auth.getAuth(app);
+            
+            // Expose the entire Firebase modules to the global scope
+            window.firestore = firestore;
+            window.firebaseAuth = auth;
+            
+            if (initialAuthToken) {
+                auth.signInWithCustomToken(window.auth, initialAuthToken)
+                    .then(() => console.log("Firebase signed in with custom token."))
+                    .catch((error) => console.error("Firebase custom token sign-in failed:", error));
+            } else {
+                auth.signInAnonymously(window.auth)
+                    .then(() => console.log("Firebase signed in anonymously."))
+                    .catch((error) => console.error("Firebase anonymous sign-in failed:", error));
+            }
+        } catch (e) {
+            console.error("Firebase initialization failed:", e);
         }
     </script>
     <style>
@@ -65,12 +63,8 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
         const { PublicKey } = solanaWeb3;
-        const { doc, setDoc, onSnapshot, updateDoc } = window.firestore;
-        const { onAuthStateChanged } = window.firebaseAuth;
 
-        // The main App component that handles all state and rendering
         const App = () => {
-            // State variables to manage the application's data and UI
             const [tetoBalance, setTetoBalance] = useState(0);
             const [isVerified, setIsVerified] = useState(false);
             const [isVerifying, setIsVerifying] = useState(false);
@@ -84,64 +78,71 @@
             const [isCheckingTime, setIsCheckingTime] = useState(false);
             const [userId, setUserId] = useState(null);
             const [isAuthReady, setIsAuthReady] = useState(false);
-
-            // Helius RPC Endpoint and API Key
+            const [isFirestoreReady, setIsFirestoreReady] = useState(false);
+            const [firestore, setFirestore] = useState(null);
+            const [firebaseAuth, setFirebaseAuth] = useState(null);
+            const [doc, setDoc] = useState(null);
+            const [onSnapshot, setOnSnapshot] = useState(null);
+            
             const heliusRpcUrl = 'https://rpc.helius.xyz/?api-key=6e2b3a8b-d410-46b1-9cc9-53d9dec76d02';
-
-            // Mint addresses for the NFT collections
             const nftMintAddresses = [
-                'J7ZoA72tbHffX1T6hmJbwZZZvT7SU144k3bDfKxHkhKF', // Degen Dojo original
-                '8gFdLpbWGMX1KnsLwnNcQehxshLsDP5exYSAihtvJN15',  // Demon Dojo original
-                '2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb', // New Degen Dojo
-                'dgd6We3oS4M4LSVzT6Ep39wwVpjLC336tCpyPZkLAHx',  // New Demon Dojo
-                'ED3GMCfoX3XNvavnWADvd6oCsohGg1ukdhv3PaUpvwJe', // Another address
-                'FdpDYUWYC8PekGttXz9kPb48CxVjpiEm5NaBb3X6zExy', // Another address
-                'B6WhJ15NYp6vxJD3K8hCxZUUqpap1kngHKE66GczGNrg',  // Another address
-                'DoJoE6b8Lbb1t8qcdm4qDRXLS7RvadZo9Rfz8xq2VgLx',  // Latest address
-                'HEyazxpV2wxMUvNx53UZUXthRS9Rjsbv7hoHYJNbVedC'   // Latest address
+                'J7ZoA72tbHffX1T6hmJbwZZZvT7SU144k3bDfKxHkhKF',
+                '8gFdLpbWGMX1KnsLwnNcQehxshLsDP5exYSAihtvJN15',
+                '2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb',
+                'dgd6We3oS4M4LSVzT6Ep39wwVpjLC336tCpyPZkLAHx',
+                'ED3GMCfoX3XNvavnWADvd6oCsohGg1ukdhv3PaUpvwJe',
+                'FdpDYUWYC8PekGttXz9kPb48CxVjpiEm5NaBb3X6zExy',
+                'B6WhJ15NYp6vxJD3K8hCxZUUqpap1kngHKE66GczGNrg',
+                'DoJoE6b8Lbb1t8qcdm4qDRXLS7RvadZo9Rfz8xq2VgLx',
+                'HEyazxpV2wxMUvNx53UZUXthRS9Rjsbv7hoHYJNbVedC'
             ];
 
-            // Function to get a reliable, non-local timestamp from a public API
             const getUTCTimeFromAPI = async () => {
                 try {
                     const response = await fetch('http://worldtimeapi.org/api/timezone/Etc/UTC');
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     const data = await response.json();
                     return new Date(data.datetime).getTime();
                 } catch (error) {
                     console.error('Failed to fetch server time:', error);
-                    // Fallback to local time if API fails, with a warning
-                    console.warn('Using local time as a fallback. This may be inaccurate and susceptible to manipulation.');
                     return Date.now();
                 }
             };
             
-            // --- Firebase Integration ---
-            // This useEffect handles the initial authentication state and sets the userId.
-            // It runs once when the component mounts.
+            // Effect to load firebase modules and set state
             useEffect(() => {
-                const authUnsubscribe = onAuthStateChanged(window.auth, (user) => {
-                    if (user) {
-                        setUserId(user.uid);
-                    } else {
-                        setUserId(null);
+                const checkFirebase = setInterval(() => {
+                    if (window.firestore && window.firebaseAuth) {
+                        setFirestore(window.firestore);
+                        setFirebaseAuth(window.firebaseAuth);
+                        setDoc(() => window.firestore.doc);
+                        setOnSnapshot(() => window.firestore.onSnapshot);
+                        clearInterval(checkFirebase);
+                        console.log("Firebase libraries loaded and state set.");
                     }
-                    setIsAuthReady(true); // Signal that auth state has been checked
-                });
-                
-                return () => authUnsubscribe();
+                }, 100); // Check every 100ms
+                return () => clearInterval(checkFirebase);
             }, []);
 
-            // This useEffect handles the Firestore data subscription.
-            // It only runs when the app is authenticated and a public key is set.
+            // Effect to handle initial authentication state and set the userId.
             useEffect(() => {
-                if (!isAuthReady || !publicKey || !userId) {
-                    // Do not proceed until auth is ready and a public key is set
+                if (!firebaseAuth) return;
+                const authUnsubscribe = firebaseAuth.onAuthStateChanged(window.auth, (user) => {
+                    if (user) setUserId(user.uid);
+                    else setUserId(null);
+                    setIsAuthReady(true);
+                });
+                return () => authUnsubscribe();
+            }, [firebaseAuth]);
+
+            // Effect to handle Firestore data subscription.
+            useEffect(() => {
+                if (!isAuthReady || !publicKey || !userId || !doc || !onSnapshot) {
+                    setIsFirestoreReady(false);
                     return;
                 }
-                const userDocRef = doc(window.db, `artifacts/${__app_id}/users/${userId}/data`, publicKey.toString());
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const userDocRef = doc(window.db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
 
                 const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
                     if (docSnap.exists()) {
@@ -152,8 +153,7 @@
                         setLastClaimTime(data.lastClaimTime || null);
                         setVerificationStatus(data.verificationStatus || '');
                     } else {
-                        console.log("User data not found in Firestore. Creating new entry.");
-                        setDoc(userDocRef, {
+                        window.firestore.setDoc(userDocRef, {
                             tetoBalance: 0,
                             isVerified: false,
                             nftCount: 0,
@@ -166,18 +166,18 @@
                         setLastClaimTime(null);
                         setVerificationStatus('');
                     }
+                    setIsFirestoreReady(true);
                 }, (error) => {
                     console.error("Firestore listener error:", error);
+                    setIsFirestoreReady(false);
                 });
-
                 return () => unsubscribe();
-            }, [isAuthReady, publicKey, userId]);
+            }, [isAuthReady, publicKey, userId, doc, onSnapshot]);
 
             // Timer logic for the 24-hour cooldown
             useEffect(() => {
                 let timerInterval = null;
                 const dailyInMs = 24 * 60 * 60 * 1000;
-
                 if (lastClaimTime !== null) {
                     timerInterval = setInterval(async () => {
                         const now = await getUTCTimeFromAPI();
@@ -187,18 +187,12 @@
                         setIsCheckingTime(false);
                     }, 1000);
                 } else if (isAuthReady) {
-                    setTimeUntilNextClaim(0); // Allow immediate claim if no lastClaimTime
+                    setTimeUntilNextClaim(0);
                     setIsCheckingTime(false);
                 }
-                
-                return () => {
-                    if (timerInterval) {
-                        clearInterval(timerInterval);
-                    }
-                };
+                return () => { if (timerInterval) clearInterval(timerInterval); };
             }, [lastClaimTime, isAuthReady]);
 
-            // Function to connect a wallet
             const connectWallet = async (walletName) => {
                 try {
                     let selectedWallet = null;
@@ -219,7 +213,6 @@
                     } else {
                         return;
                     }
-                    
                     const resp = await selectedWallet.connect();
                     setWallet(selectedWallet);
                     setPublicKey(resp.publicKey);
@@ -229,7 +222,6 @@
                 }
             };
 
-            // Function to disconnect the wallet
             const disconnectWallet = () => {
                 if (wallet) {
                     wallet.disconnect();
@@ -238,14 +230,12 @@
                 }
             };
 
-            // Function to handle the NFT verification check using the Helius API
             const verifyNFT = async () => {
-                if (!publicKey || !isAuthReady) return;
+                if (!publicKey || !isAuthReady || !isFirestoreReady) return;
                 setIsVerifying(true);
                 setVerificationStatus('Verifying...');
-                
-                const userDocRef = doc(window.db, `artifacts/${__app_id}/users/${userId}/data`, publicKey.toString());
-
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const userDocRef = firestore.doc(window.db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
                 try {
                     const response = await fetch(heliusRpcUrl, {
                         method: 'POST',
@@ -256,82 +246,48 @@
                             method: 'getAssetsByOwner',
                             params: {
                                 ownerAddress: publicKey.toString(),
-                                displayOptions: {
-                                    showFungible: false,
-                                    showUnverifiedCollections: false,
-                                    showCollectionMetadata: true
-                                }
+                                displayOptions: { showFungible: false, showUnverifiedCollections: false, showCollectionMetadata: true }
                             }
                         })
                     });
-
                     const data = await response.json();
                     const assets = data.result.items;
-                    let holderCount = 0;
-
-                    // Iterate through the NFTs returned by Helius to count owned NFTs
-                    for (const asset of assets) {
-                        if (nftMintAddresses.includes(asset.id)) {
-                            holderCount++;
-                        }
-                    }
-
+                    let holderCount = assets.filter(asset => nftMintAddresses.includes(asset.id)).length;
                     const isHolder = holderCount > 0;
-                    
-                    await setDoc(userDocRef, {
-                        isVerified: isHolder,
-                        nftCount: holderCount,
-                        verificationStatus: isHolder ? `Verified! You hold ${holderCount} NFTs.` : 'Not a holder.'
-                    }, { merge: true });
-
+                    await firestore.setDoc(userDocRef, { isVerified: isHolder, nftCount: holderCount, verificationStatus: isHolder ? `Verified! You hold ${holderCount} NFTs.` : 'Not a holder.' }, { merge: true });
                 } catch (error) {
                     console.error('Failed to verify NFT ownership:', error);
-                    await setDoc(userDocRef, {
-                        isVerified: false,
-                        nftCount: 0,
-                        verificationStatus: 'Verification failed. Try again.'
-                    }, { merge: true });
+                    await firestore.setDoc(userDocRef, { isVerified: false, nftCount: 0, verificationStatus: 'Verification failed. Try again.' }, { merge: true });
                 } finally {
                     setIsVerifying(false);
                 }
             };
 
-            // Function to handle the daily reward claim
             const claimDailyReward = async () => {
-                if (!isVerified || !publicKey || isCheckingTime) return;
-                
-                const userDocRef = doc(window.db, `artifacts/${__app_id}/users/${userId}/data`, publicKey.toString());
-                
+                if (!isVerified || !publicKey || isCheckingTime || !isFirestoreReady) return;
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const userDocRef = firestore.doc(window.db, `artifacts/${appId}/users/${userId}/data`, publicKey.toString());
                 const now = await getUTCTimeFromAPI();
                 const dailyInMs = 24 * 60 * 60 * 1000;
-                
                 if (!lastClaimTime || (now - lastClaimTime) >= dailyInMs) {
                     const reward = 10 * nftCount;
-                    
-                    await setDoc(userDocRef, {
-                        tetoBalance: tetoBalance + reward,
-                        lastClaimTime: now
-                    }, { merge: true });
+                    await firestore.setDoc(userDocRef, { tetoBalance: tetoBalance + reward, lastClaimTime: now }, { merge: true });
                 } else {
                      console.log('Claim not yet available. Please wait until cooldown is over.');
                 }
             };
 
-            // Utility function to format time in HH:MM:SS
             const formatTime = (ms) => {
                 if (ms <= 0) return 'Ready!';
                 const seconds = Math.floor(ms / 1000);
                 const minutes = Math.floor(seconds / 60);
                 const hours = Math.floor(minutes / 60);
-
                 const displayHours = String(hours).padStart(2, '0');
                 const displayMinutes = String(minutes % 60).padStart(2, '0');
                 const displaySeconds = String(seconds % 60).padStart(2, '0');
-                
                 return `${displayHours}:${displayMinutes}:${displaySeconds}`;
             };
 
-            // Utility function to truncate the public key for display
             const truncatePublicKey = (key) => {
                 if (!key) return '';
                 const keyStr = key.toString();
@@ -341,7 +297,7 @@
             const isConnected = !!publicKey;
             const canClaim = isVerified && timeUntilNextClaim === 0 && !isCheckingTime;
             const rewardAmount = nftCount * 10;
-            const isLoading = !isAuthReady;
+            const isLoading = !isAuthReady || !firestore || !firebaseAuth || (isConnected && !isFirestoreReady);
 
             if (isLoading) {
                 return (
@@ -356,7 +312,6 @@
 
             return (
                 <div className="bg-gray-900 text-white min-h-screen relative overflow-hidden font-vt323">
-                    {/* Background Image and Overlay */}
                     <div
                         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
                         style={{
@@ -366,62 +321,44 @@
                             backgroundPosition: 'center',
                         }}>
                     </div>
-
-                    {/* Main Content Container */}
                     <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
                         <div className="text-center max-w-2xl">
                             <div id="app-container" className="bg-black/40 backdrop-blur-sm rounded-3xl p-10 border-2 border-red-500/50 shadow-2xl">
-                                {/* Conditional rendering based on connection status */}
                                 {!isConnected ? (
-                                    // Disconnected view
                                     <div>
                                         <div className="mb-6">
-                                            <h3 className="text-3xl font-bold text-red-900 mb-4 font-noto-sans-jp">
-                                                TRUE DEGENS WELCOME
-                                            </h3>
-                                            <p className="text-red-200 text-lg leading-relaxed">
-                                                Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-900 font-bold">Teto</span> rewards every day and test your luck on the <span className="text-red-900 font-bold">Wheel</span>!
-                                            </p>
+                                            <h3 className="text-3xl font-bold text-red-900 mb-4 font-noto-sans-jp">TRUE DEGENS WELCOME</h3>
+                                            <p className="text-red-200 text-lg leading-relaxed">Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-900 font-bold">Teto</span> rewards every day and test your luck on the <span className="text-red-900 font-bold">Wheel</span>!</p>
                                         </div>
                                         <div className="text-center mb-6">
                                             <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
-                                                <span className="text-red-900">⛩</span>
-                                                <span>Daily Teto Rewards</span>
+                                                <span className="text-red-900">⛩</span><span>Daily Teto Rewards</span>
                                             </p>
                                             <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
-                                                <span className="text-red-900">⛩</span>
-                                                <span>Lottery Wheel Gambling</span>
+                                                <span className="text-red-900">⛩</span><span>Lottery Wheel Gambling</span>
                                             </p>
                                             <p className="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
-                                                <span className="text-red-900">⛩</span>
-                                                <span>Degen Duels</span>
+                                                <span className="text-red-900">⛩</span><span>Degen Duels</span>
                                             </p>
                                         </div>
                                         <div className="relative">
                                             <button
                                                 id="connect-button"
                                                 className="wallet-connect-button relative z-20"
-                                                onClick={() => setShowModal(true)}>
-                                                Connect Wallet
-                                            </button>
+                                                onClick={() => setShowModal(true)}>Connect Wallet</button>
                                             <div className="absolute -inset-1 bg-gradient-to-r from-red-600 to-red-400 rounded-xl opacity-90 animate-pulse z-10"></div>
                                         </div>
                                     </div>
                                 ) : (
-                                    // Connected view
                                     <div>
                                         <header className="mb-8">
                                             <div className="flex justify-between items-center">
-                                                <div>
-                                                    <h2 className="text-3xl font-bold text-red-900">TETO REWARDS</h2>
-                                                </div>
+                                                <div><h2 className="text-3xl font-bold text-red-900">TETO REWARDS</h2></div>
                                                 <div className="flex items-center space-x-4">
                                                     <button
                                                         id="disconnect-button"
                                                         className="bg-gray-700 hover:bg-gray-800 text-red-900 font-bold py-2 px-4 rounded-xl transition-colors"
-                                                        onClick={disconnectWallet}>
-                                                        Disconnect
-                                                    </button>
+                                                        onClick={disconnectWallet}>Disconnect</button>
                                                     <span className="text-red-900">Connected: {truncatePublicKey(publicKey)}</span>
                                                 </div>
                                             </div>
@@ -431,14 +368,10 @@
                                                 <div className="bg-black/40 backdrop-blur-sm rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
                                                     <h3 className="text-2xl font-bold text-red-900 mb-4 font-vt323">NFT Verification</h3>
                                                     {isVerified ? (
-                                                        <p className="text-red-200 font-vt323">
-                                                            You are a verified True Degen!
-                                                        </p>
+                                                        <p className="text-red-200 font-vt323">You are a verified True Degen!</p>
                                                     ) : (
                                                         <>
-                                                            <p className="text-red-200 font-vt323 mb-4">
-                                                                Verify your NFT to claim rewards.
-                                                            </p>
+                                                            <p className="text-red-200 font-vt323 mb-4">Verify your NFT to claim rewards.</p>
                                                             <button
                                                                 id="verify-nft-btn"
                                                                 className={`w-full py-3 px-6 rounded-xl font-bold transition-all duration-300 font-vt323 ${isVerifying ? 'bg-yellow-600 text-yellow-100 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-red-500/50'}`}
@@ -454,8 +387,7 @@
                                                     <h3 className="text-2xl font-bold text-red-900 mb-4 font-vt323">Teto Rewards</h3>
                                                     <div className="flex items-center space-x-2 mt-4">
                                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-yellow-400">
-                                                            <circle cx="8" cy="8" r="6" />
-                                                            <path d="M18.09 10.37A6 6 0 1 1 10.34 18M7 6h1.22a9 9 0 0 0 6.66 12.66" />
+                                                            <circle cx="8" cy="8" r="6" /><path d="M18.09 10.37A6 6 0 1 1 10.34 18M7 6h1.22a9 9 0 0 0 6.66 12.66" />
                                                         </svg>
                                                         <span className="text-4xl font-bold text-red-900 font-vt323">{tetoBalance} TETO</span>
                                                     </div>
@@ -463,31 +395,24 @@
                                                         <div className="flex items-center justify-between text-red-200 font-vt323">
                                                             <div className="flex items-center space-x-2">
                                                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-red-400">
-                                                                    <circle cx="12" cy="12" r="10" />
-                                                                    <polyline points="12 6 12 12 16 14" />
+                                                                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
                                                                 </svg>
                                                                 <span>Next Claim:</span>
                                                             </div>
-                                                            <span id="claim-timer" className="text-xl font-bold">
-                                                                {isCheckingTime ? 'Checking time...' : (isVerified ? formatTime(timeUntilNextClaim) : 'Not Verified')}
-                                                            </span>
+                                                            <span id="claim-timer" className="text-xl font-bold">{isCheckingTime ? 'Checking time...' : (isVerified ? formatTime(timeUntilNextClaim) : 'Not Verified')}</span>
                                                         </div>
                                                     </div>
                                                     <button
                                                         id="claim-reward-btn"
                                                         className={`w-full mt-6 py-3 px-6 rounded-xl font-bold transition-all duration-300 font-vt323 ${!canClaim ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-green-500/50'}`}
                                                         disabled={!canClaim}
-                                                        onClick={claimDailyReward}>
-                                                        Claim {rewardAmount} TETO
-                                                    </button>
+                                                        onClick={claimDailyReward}>Claim {rewardAmount} TETO</button>
                                                 </div>
                                             </div>
                                             <div className="lg:col-span-2">
                                                 <div className="bg-black/40 backdrop-blur-sm rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
                                                     <h3 className="text-2xl font-bold text-red-900 mb-4 font-vt323">Lottery Wheel</h3>
-                                                    <p className="text-red-200 font-vt323">
-                                                        The wheel of fortune is not yet implemented.
-                                                    </p>
+                                                    <p className="text-red-200 font-vt323">The wheel of fortune is not yet implemented.</p>
                                                 </div>
                                             </div>
                                         </div>
@@ -496,8 +421,6 @@
                             </div>
                         </div>
                     </div>
-                    
-                    {/* Modal for Wallet Selection */}
                     {showModal && (
                         <div id="wallet-modal" className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                             <div className="bg-black/80 p-6 rounded-lg shadow-xl max-w-sm w-full border-2 border-red-500/50">
@@ -506,26 +429,21 @@
                                     <button
                                         className="wallet-option-btn w-full py-3 px-6 rounded-lg text-white font-bold bg-gray-800 hover:bg-gray-700 transition-colors"
                                         onClick={() => connectWallet('Phantom')}>
-                                        <img src="https://phantom.app/ul/v1/logo.svg" alt="Phantom" className="w-6 h-6 inline-block mr-2" />
-                                        Phantom
+                                        <img src="https://phantom.app/ul/v1/logo.svg" alt="Phantom" className="w-6 h-6 inline-block mr-2" />Phantom
                                     </button>
                                     <button
                                         className="wallet-option-btn w-full py-3 px-6 rounded-lg text-white font-bold bg-gray-800 hover:bg-gray-700 transition-colors"
                                         onClick={() => connectWallet('Solflare')}>
-                                        <img src="https://solflare.com/logo.svg" alt="Solflare" className="w-6 h-6 inline-block mr-2" />
-                                        Solflare
+                                        <img src="https://solflare.com/logo.svg" alt="Solflare" className="w-6 h-6 inline-block mr-2" />Solflare
                                     </button>
                                 </div>
                                 <button
                                     id="modal-close-btn"
                                     className="mt-4 w-full py-2 px-6 rounded-lg text-red-400 font-bold hover:text-red-300"
-                                    onClick={() => setShowModal(false)}>
-                                    Cancel
-                                </button>
+                                    onClick={() => setShowModal(false)}>Cancel</button>
                             </div>
                         </div>
                     )}
-                    
                 </div>
             );
         };
