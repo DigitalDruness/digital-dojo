@@ -89,14 +89,9 @@
         };
 
         // --- Main App Component ---
-        function App() {
-            const [auth, setAuth] = useState(null);
-            const [db, setDb] = useState(null);
-            const [appId, setAppId] = useState(null);
-
+        function App({ auth, db, appId, user }) {
             const [publicKey, setPublicKey] = useState(null);
             const [walletProvider, setWalletProvider] = useState(null); 
-            const [isAuthReady, setIsAuthReady] = useState(false);
             const [tetoBalance, setTetoBalance] = useState(0);
             const [lastClaimTimestamp, setLastClaimTimestamp] = useState(null);
             const [nftCount, setNftCount] = useState(0);
@@ -105,97 +100,45 @@
             const [accumulatedRewards, setAccumulatedRewards] = useState(0);
             const [timeUntilNextHour, setTimeUntilNextHour] = useState(0);
 
-            // Effect 1: Initialize Firebase ONCE on component mount
+            // Effect 1: Handles Data Fetching for the logged-in user.
             useEffect(() => {
-                // [FIXED] Reverted to using the environment-provided config to prevent token mismatch.
-                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-
-                try {
-                    if (firebaseConfig.apiKey) {
-                        if (!firebase.apps.length) {
-                            const app = firebase.initializeApp(firebaseConfig);
-                            setAuth(app.auth());
-                            setDb(app.firestore());
-                            setAppId(app.options.appId);
-                            console.log("Firebase Initialized Successfully!");
-                        } else {
-                            const app = firebase.app();
-                            setAuth(app.auth());
-                            setDb(app.firestore());
-                            setAppId(app.options.appId);
-                            console.log("Firebase Re-used Existing Instance.");
-                        }
-                    } else {
-                        console.error("Firebase config is missing or invalid.");
-                        setIsLoading(false);
-                    }
-                } catch (error) {
-                    console.error("Firebase Initialization Failed:", error);
+                if (!db || !appId || !user) {
                     setIsLoading(false);
-                }
-            }, []);
-
-            // Effect 2: Handles Authentication and Data Fetching.
-            useEffect(() => {
-                if (!auth || !db || !appId) return; 
-
-                const initAuth = async () => {
-                    try {
-                        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
-                        if (initialAuthToken) {
-                            await auth.signInWithCustomToken(initialAuthToken);
-                        } else {
-                            await auth.signInAnonymously();
-                        }
-                    } catch (error) {
-                        console.error("Firebase Auth Error:", error);
-                        showMessage("Authentication failed.");
-                    }
+                    return;
                 };
+
+                const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('tetoRewards').doc('userData');
                 
-                const unsubscribe = auth.onAuthStateChanged((user) => {
-                    if (user) {
-                        setIsAuthReady(true);
-                        const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('tetoRewards').doc('userData');
-                        
-                        const unsubSnapshot = userDocRef.onSnapshot((docSnap) => {
-                            if (docSnap.exists) {
-                                const data = docSnap.data();
-                                setTetoBalance(data.balance || 0);
-                                setLastClaimTimestamp(data.lastClaimTimestamp?.toMillis() || Date.now());
-                                setNftCount(data.nftCount || 0);
-                                if (data.walletAddress) {
-                                    setPublicKey({ toString: () => data.walletAddress });
-                                }
-                            } else {
-                                userDocRef.set({ 
-                                    balance: 0, 
-                                    nftCount: 0, 
-                                    lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp(), 
-                                    walletAddress: null 
-                                });
-                            }
-                            setIsLoading(false);
-                        }, (error) => {
-                            console.error("Firestore Snapshot Error:", error);
-                            showMessage("Error fetching user data.");
-                            setIsLoading(false);
-                        });
-                        
-                        return () => {
-                            unsubSnapshot();
-                        };
+                const unsubSnapshot = userDocRef.onSnapshot((docSnap) => {
+                    if (docSnap.exists) {
+                        const data = docSnap.data();
+                        setTetoBalance(data.balance || 0);
+                        setLastClaimTimestamp(data.lastClaimTimestamp?.toMillis() || Date.now());
+                        setNftCount(data.nftCount || 0);
+                        if (data.walletAddress) {
+                            setPublicKey({ toString: () => data.walletAddress });
+                        }
                     } else {
-                        setIsLoading(false);
-                        setIsAuthReady(false);
-                        setPublicKey(null);
+                        userDocRef.set({ 
+                            balance: 0, 
+                            nftCount: 0, 
+                            lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp(), 
+                            walletAddress: null 
+                        });
                     }
+                    setIsLoading(false);
+                }, (error) => {
+                    console.error("Firestore Snapshot Error:", error);
+                    showMessage("Error fetching user data.");
+                    setIsLoading(false);
                 });
                 
-                initAuth();
-                return () => unsubscribe();
-            }, [auth, db, appId]); 
+                return () => {
+                    unsubSnapshot();
+                };
+            }, [db, appId, user]); 
 
+            // Effect 2: Handles reward accumulation logic
             useEffect(() => {
                 if (!lastClaimTimestamp || nftCount <= 0) {
                     setCanClaim(false);
@@ -248,8 +191,8 @@
                     showMessage("Wallet provider not found!");
                     return;
                 }
-                if (!auth || !auth.currentUser) {
-                    showMessage("Please wait for authentication to complete.");
+                if (!auth.currentUser) {
+                    showMessage("Authentication not ready.");
                     return;
                 }
 
@@ -296,19 +239,12 @@
                 const newBalance = tetoBalance + accumulatedRewards;
                 const userId = auth.currentUser.uid;
                 const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('tetoRewards').doc('userData');
-                const leaderboardDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('leaderboard').doc(userId);
                 
                 try {
                     await userDocRef.update({
                         balance: newBalance,
                         lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp() 
                     });
-
-                    await leaderboardDocRef.set({
-                        balance: newBalance,
-                        walletAddress: publicKey.toString()
-                    }, { merge: true });
-
                     showMessage(`Claimed ${accumulatedRewards} TETO!`);
                     setAccumulatedRewards(0);
                     setCanClaim(false);
@@ -333,30 +269,28 @@
                             </p>
                             <div className="space-y-3 my-8 flex flex-col items-center text-gray-200">
                                 <div className="flex items-center p-2 rounded-lg">
-                                    <span className="text-xl mr-3 text-red-700 font-bold">⛩</span>
+                                    <span className="text-xl mr-3 text-red-700 font-bold" style={{textShadow: '0 0 5px #b91c1c'}}>⛩</span>
                                     <span>Hourly Teto Rewards</span>
                                 </div>
                                 <div className="flex items-center p-2 rounded-lg">
-                                    <span className="text-xl mr-3 text-red-700 font-bold">⛩</span>
+                                    <span className="text-xl mr-3 text-red-700 font-bold" style={{textShadow: '0 0 5px #b91c1c'}}>⛩</span>
                                     <span>Lottery Wheel Gambling</span>
                                 </div>
                                 <div className="flex items-center p-2 rounded-lg">
-                                    <span className="text-xl mr-3 text-red-700 font-bold">⛩</span>
+                                    <span className="text-xl mr-3 text-red-700 font-bold" style={{textShadow: '0 0 5px #b91c1c'}}>⛩</span>
                                     <span>Degen Duels</span>
                                 </div>
                             </div>
                             <div className="flex space-x-4">
                                 <button 
                                     onClick={() => connectWallet(window.solana)} 
-                                    disabled={!isAuthReady}
-                                    className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                                    className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
                                     {icons.wallet}
                                     <span className="ml-2">Phantom</span>
                                 </button>
                                 <button 
                                     onClick={() => connectWallet(window.solflare)} 
-                                    disabled={!isAuthReady}
-                                    className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                                    className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
                                     {icons.wallet}
                                     <span className="ml-2">Solflare</span>
                                 </button>
@@ -458,7 +392,45 @@
             );
         }
 
-        ReactDOM.render(<App />, document.getElementById('root'));
+        // [FIXED] New initialization and rendering logic
+        async function initializeAndRender() {
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
+
+            if (!firebaseConfig.apiKey) {
+                console.error("Firebase config is missing or invalid.");
+                return;
+            }
+
+            let app, auth, db;
+            try {
+                if (!firebase.apps.length) {
+                    app = firebase.initializeApp(firebaseConfig);
+                } else {
+                    app = firebase.app();
+                }
+                auth = app.auth();
+                db = app.firestore();
+
+                let user;
+                if (initialAuthToken) {
+                    const userCredential = await auth.signInWithCustomToken(initialAuthToken);
+                    user = userCredential.user;
+                } else {
+                    const userCredential = await auth.signInAnonymously();
+                    user = userCredential.user;
+                }
+                
+                // Only render the app AFTER Firebase is ready and the user is signed in
+                ReactDOM.render(<App auth={auth} db={db} appId={app.options.appId} user={user} />, document.getElementById('root'));
+
+            } catch (error) {
+                console.error("Critical Firebase Error:", error);
+                document.getElementById('root').innerHTML = `<div style="color: red; text-align: center; padding: 20px;">Failed to initialize. Please check the console.</div>`;
+            }
+        }
+
+        initializeAndRender();
     </script>
     
 </body>
