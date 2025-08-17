@@ -32,7 +32,7 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- NFT Collections (API KEY IS NOW GONE!) ---
+        // --- NFT Collections (API KEY IS GONE!) ---
         const collectionMintAddresses = [
             "2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb",
             "DmRQEKrjRHrEVT8TNc7kWLjKbCv7RTn672LrgpnFagah",
@@ -90,7 +90,6 @@
             const [accumulatedRewards, setAccumulatedRewards] = useState(0);
             const [timeUntilNextHour, setTimeUntilNextHour] = useState(0);
 
-            // Effect 1: Handles Data Fetching for the logged-in user.
             useEffect(() => {
                 if (!db || !appId || !user) {
                     setIsLoading(false);
@@ -128,7 +127,6 @@
                 };
             }, [db, appId, user]); 
 
-            // Effect 2: Handles reward accumulation logic
             useEffect(() => {
                 if (!lastClaimTimestamp || nftCount <= 0) {
                     setCanClaim(false);
@@ -149,7 +147,7 @@
                 return () => clearInterval(interval);
             }, [lastClaimTimestamp, nftCount]);
             
-            // --- THIS IS THE NEW SECURE FUNCTION ---
+            // --- THIS IS THE CORRECTED AND SECURE FUNCTION ---
             const checkNFTCount = async (ownerPublicKey) => {
                 if (!ownerPublicKey) return 0;
 
@@ -160,7 +158,7 @@
                     // Get a reference to the specific cloud function we deployed
                     const getNftCount = functions.httpsCallable('getNftCount');
                     
-                    // Call the function with the wallet address
+                    // This is the critical line: it creates the payload object
                     const result = await getNftCount({ ownerAddress: ownerPublicKey.toString() });
 
                     // The result.data object contains the data our function returned
@@ -185,7 +183,6 @@
 
                 try {
                     const response = await provider.connect();
-
                     let connectedPublicKey;
                     if (response.publicKey) {
                         connectedPublicKey = response.publicKey;
@@ -200,7 +197,6 @@
                     setPublicKey(connectedPublicKey);
                     setWalletProvider(provider);
                     
-                    // This now calls our new, secure function
                     const count = await checkNFTCount(connectedPublicKey);
                     const userId = auth.currentUser.uid;
                     const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('tetoRewards').doc('userData');
@@ -211,7 +207,6 @@
                     }, { merge: true });
                     
                     showMessage(`Wallet connected: ${truncatePublicKey(connectedPublicKey)}`);
-
                 } catch (error) {
                     console.error('Failed to connect wallet:', error);
                     if (error.code === 4001) { 
