@@ -1,142 +1,413 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-// [MODIFIED] Added 'serverTimestamp' for the secure write operation
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc, collection, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
-// [REMOVED] No longer need the Cloud Functions library
-// import { getFunctions, httpsCallable } from "firebase/functions";
-
 
 // --- Global variables & Firebase Initialization ---
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-// [REMOVED] No longer need to initialize functions
-// const functions = getFunctions(app);
 
+let app, auth, db;
+if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+} else {
+    console.warn("Firebase config is missing. App will not connect to backend.");
+}
 
-// --- Helius API & NFT Collections (unchanged) ---
+// --- Helius API & NFT Collections ---
 const heliusApiKey = "6e2b3a8b-d410-46b1-9cc9-53d9dec76d02"; 
-const heliusEndpoint = `https://rpc.helius.xyz/?api-key=${heliusApiKey}`;
-const collectionMintAddresses = [ /* ... unchanged ... */ ];
+// [MODIFIED] Pointed to Solana Mainnet
+const heliusEndpoint = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+const collectionMintAddresses = [
+    "2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb",
+    "DmRQEKrjRHrEVT8TNc7kWLjKbCv7RTn672LrgpnFagah",
+    "dgd6We3oS4M5LSVzT6Ep39wwVpjLC336tCpyPZkLAHx",
+    "FdpDYUWYC8PekGttXz9kPb48CxVjpiEm5NaBb3X6zExy",
+    "HEyazxpV2wxMUvNx53UZUXthRS9Rjsbv7hoHYJNbVedC",
+    "DoJoE6b8Lbb1t8qcdm4qDRXLS7RvadZo9Rfz8xq2VgLx"
+];
 
-// --- Utility Functions (unchanged) ---
-const showMessage = (message) => { /* ... */ };
-const formatTime = (ms) => { /* ... */ };
-const truncatePublicKey = (key) => { /* ... */ };
-const icons = { /* ... */ };
+// --- Utility Functions ---
+const showMessage = (message) => {
+    const messageElement = document.getElementById('message-box');
+    if (messageElement) {
+        messageElement.textContent = message;
+        messageElement.style.display = 'block';
+        messageElement.style.opacity = 1;
+        setTimeout(() => {
+            messageElement.style.opacity = 0;
+            setTimeout(() => {
+                messageElement.style.display = 'none';
+            }, 500);
+        }, 3000);
+    }
+};
+
+const formatTime = (ms) => {
+    if (ms <= 0) return "00:00:00";
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
+
+const truncatePublicKey = (key) => {
+    if (!key) return '';
+    const str = key.toString();
+    return str.length > 8 ? `${str.substring(0, 4)}...${str.substring(str.length - 4)}` : str;
+};
+
+const icons = {
+    wallet: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>,
+    claim: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01M12 6v-1m0-1V4m0 2.01V5M12 20v-1m0-1v-1m0-1v-1m0-1v-1m0-1v-1"></path></svg>
+};
 
 
 // --- Main App Component ---
 export default function App() {
-    // --- State Management (unchanged) ---
+    // --- State Management ---
     const [publicKey, setPublicKey] = useState(null);
+    const [walletProvider, setWalletProvider] = useState(null); 
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [tetoBalance, setTetoBalance] = useState(0);
     const [lastClaimTimestamp, setLastClaimTimestamp] = useState(null);
     const [nftCount, setNftCount] = useState(0);
     const [canClaim, setCanClaim] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-    const [leaderboardData, setLeaderboardData] = useState([]);
     const [accumulatedRewards, setAccumulatedRewards] = useState(0);
     const [timeUntilNextHour, setTimeUntilNextHour] = useState(0);
 
-
-    // --- Firebase Setup and Authentication (unchanged) ---
+    // --- Firebase Setup and Authentication ---
     useEffect(() => {
-        // ... same as before
-    }, []);
-
-    // --- Timer and VISUAL Reward Accumulation (unchanged) ---
-    // This hook's only job is to update the UI so the user sees rewards ticking up.
-    useEffect(() => {
-        // ... same as before
-    }, [lastClaimTimestamp, nftCount]);
-
-    // Leaderboard useEffect (unchanged)
-    useEffect(() => { /* ... */ }, [isAuthReady]);
-
-    // Helius API checkNFTCount function (unchanged)
-    const checkNFTCount = async (ownerPublicKey) => { /* ... */ };
-
-    // connectWallet function (unchanged) - it correctly saves the walletAddress
-     const connectWallet = async () => {
-        try {
-            const { solana } = window;
-            if (solana && solana.isPhantom) {
-                const response = await solana.connect();
-                const connectedPublicKey = response.publicKey;
-                setPublicKey(connectedPublicKey);
-                const count = await checkNFTCount(connectedPublicKey);
-                const userId = auth.currentUser.uid;
-                if (!userId) { showMessage("Authentication error."); return; }
-                const userDocRef = doc(db, 'artifacts', appId, 'users', userId, 'tetoRewards', 'userData');
-                await setDoc(userDocRef, { 
-                    nftCount: count,
-                    walletAddress: connectedPublicKey.toString()
-                }, { merge: true });
-                showMessage(`Wallet connected: ${truncatePublicKey(connectedPublicKey)}`);
-            } else { showMessage('Phantom wallet not found!'); }
-        } catch (error) { console.error('Failed to connect wallet:', error); }
-    };
-
-    // disconnectWallet function (unchanged)
-    const disconnectWallet = async () => { /* ... */ };
-
-    // --- [COMPLETELY REWRITTEN] Claim Function for Security Rules Method ---
-    const claimAccruedReward = async () => {
-        if (!canClaim || accumulatedRewards <= 0) return;
-
-        // The client calculates the expected new balance.
-        // The security rule on the server will verify this calculation is correct.
-        const newBalance = tetoBalance + accumulatedRewards;
-        const userId = auth.currentUser.uid;
-
-        if (!userId) {
-            showMessage("Authentication error. Please refresh.");
+        if (!auth || !db) {
+            setIsLoading(false);
             return;
         }
 
-        const userDocRef = doc(db, 'artifacts', appId, 'users', userId, 'tetoRewards', 'userData');
-        const leaderboardDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', userId);
+        const initAuth = async () => {
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Firebase Auth Error:", error);
+                showMessage("Authentication failed.");
+            }
+        };
+
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                setIsAuthReady(true);
+                const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'tetoRewards', 'userData');
+                
+                const unsubSnapshot = onSnapshot(userDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        setTetoBalance(data.balance || 0);
+                        setLastClaimTimestamp(data.lastClaimTimestamp?.toMillis() || Date.now());
+                        setNftCount(data.nftCount || 0);
+                        if (data.walletAddress) {
+                            setPublicKey({ toString: () => data.walletAddress });
+                        }
+                    } else {
+                        setDoc(userDocRef, { balance: 0, nftCount: 0, lastClaimTimestamp: serverTimestamp(), walletAddress: null });
+                    }
+                    setIsLoading(false);
+                }, (error) => {
+                    console.error("Firestore Snapshot Error:", error);
+                    showMessage("Error fetching user data.");
+                    setIsLoading(false);
+                });
+                return () => unsubSnapshot();
+            } else {
+                setIsLoading(false);
+                setIsAuthReady(false);
+                setPublicKey(null);
+            }
+        });
+
+        initAuth();
+        return () => unsubscribe();
+    }, []);
+
+    // --- Timer and VISUAL Reward Accumulation ---
+    useEffect(() => {
+        if (!lastClaimTimestamp || nftCount <= 0) {
+            setCanClaim(false);
+            setAccumulatedRewards(0);
+            return;
+        }
+
+        const interval = setInterval(() => {
+            const now = Date.now();
+            const elapsed = now - lastClaimTimestamp;
+            const hoursElapsed = elapsed / (1000 * 60 * 60);
+            const rewards = Math.floor(hoursElapsed * nftCount * 10);
+            setAccumulatedRewards(rewards);
+            setCanClaim(rewards > 0);
+            
+            const msInHour = 1000 * 60 * 60;
+            const nextHour = Math.ceil(now / msInHour) * msInHour;
+            setTimeUntilNextHour(nextHour - now);
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [lastClaimTimestamp, nftCount]);
+
+    // --- Helius API checkNFTCount function ---
+    const checkNFTCount = async (ownerPublicKey) => {
+        if (!ownerPublicKey) return 0;
+        try {
+            const response = await fetch(heliusEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 'my-id',
+                    method: 'getAssetsByOwner',
+                    params: { ownerAddress: ownerPublicKey.toString(), page: 1, limit: 1000 },
+                }),
+            });
+            const { result } = await response.json();
+            if (result && result.items) {
+                return result.items.filter(nft =>
+                    nft.grouping?.group_key === 'collection' &&
+                    collectionMintAddresses.includes(nft.grouping.group_value)
+                ).length;
+            }
+        } catch (error) {
+            console.error("Failed to fetch NFTs from Helius:", error);
+            showMessage("Could not verify NFT count.");
+        }
+        return 0;
+    };
+
+    // --- Generic connectWallet function ---
+    const connectWallet = async (provider) => {
+        if (!provider) {
+            showMessage("Wallet provider not found!");
+            return;
+        }
+        if (!auth.currentUser) return showMessage("Please wait for authentication.");
 
         try {
-            // Attempt to update the user's document.
-            // The security rule we wrote will automatically intercept and validate this request on the server.
+            const response = await provider.connect();
+            const connectedPublicKey = response.publicKey;
+            
+            setPublicKey(connectedPublicKey);
+            setWalletProvider(provider); 
+
+            const count = await checkNFTCount(connectedPublicKey);
+            const userId = auth.currentUser.uid;
+            const userDocRef = doc(db, 'artifacts', appId, 'users', userId, 'tetoRewards', 'userData');
+            
+            await setDoc(userDocRef, { 
+                nftCount: count,
+                walletAddress: connectedPublicKey.toString()
+            }, { merge: true });
+
+            showMessage(`Wallet connected: ${truncatePublicKey(connectedPublicKey)}`);
+        } catch (error) {
+            console.error('Failed to connect wallet:', error);
+            showMessage("Wallet connection failed.");
+        }
+    };
+    
+    // --- Combined connection handler ---
+    const handleConnectClick = () => {
+        const provider = window.solflare || window.solana;
+        if (provider) {
+            connectWallet(provider);
+        } else {
+            showMessage("No Solana wallet found. Please install Phantom or Solflare.");
+        }
+    };
+
+    // --- disconnectWallet function ---
+    const disconnectWallet = async () => {
+        if (walletProvider && walletProvider.disconnect) {
+            try {
+                await walletProvider.disconnect();
+            } catch (error) {
+                 console.error('Failed to disconnect wallet:', error);
+            }
+        } else {
+             const { solana, solflare } = window;
+             if (solana && solana.disconnect) await solana.disconnect();
+             if (solflare && solflare.disconnect) await solflare.disconnect();
+        }
+        
+        setPublicKey(null);
+        setWalletProvider(null);
+        const userId = auth.currentUser?.uid;
+        if (userId) {
+            const userDocRef = doc(db, 'artifacts', appId, 'users', userId, 'tetoRewards', 'userData');
+            await updateDoc(userDocRef, { walletAddress: null, nftCount: 0 });
+        }
+        showMessage('Wallet disconnected.');
+    };
+
+    // --- Claim Function ---
+    const claimAccruedReward = async () => {
+        if (!canClaim || accumulatedRewards <= 0 || !auth.currentUser) return;
+
+        const newBalance = tetoBalance + accumulatedRewards;
+        const userId = auth.currentUser.uid;
+        const userDocRef = doc(db, 'artifacts', appId, 'users', userId, 'tetoRewards', 'userData');
+        
+        try {
             await updateDoc(userDocRef, {
                 balance: newBalance,
-                // We ask Firestore to use the true server's timestamp when writing.
-                // The security rule will check for this.
                 lastClaimTimestamp: serverTimestamp() 
             });
 
-            // This second write updates the leaderboard.
-            await setDoc(leaderboardDocRef, {
-                balance: newBalance,
-            }, { merge: true });
-
             showMessage(`Claimed ${accumulatedRewards} TETO!`);
-            // Reset visual state immediately
             setAccumulatedRewards(0);
             setCanClaim(false);
-
         } catch (error) {
             console.error("Error claiming reward:", error);
-            // If the user cheated, this error will most likely say "Permission Denied".
             showMessage("Claim failed. The server denied the request.");
         }
     };
     
-    // --- Conditional Rendering & JSX (unchanged) ---
-    // The visual part of the component doesn't need to change.
+    // --- Conditional Rendering & JSX ---
     const renderContent = () => {
-        if (isLoading) { /* ... */ }
-        if (!publicKey) { /* ... */ }
-        return ( <div> {/* ... The rest of your JSX from the hourly update ... */} </div> );
-    };
+        if (isLoading) {
+            return <div className="text-center text-gray-400 animate-pulse">Loading TETO data...</div>;
+        }
 
-    return ( <div> {/* ... The main return wrapper with styles, etc. ... */} </div> );
+        if (!publicKey) {
+            return (
+                <div className="text-center">
+                    <h2 className="text-2xl font-bold mb-4 text-red-700 tracking-wider">
+                        TRUE DEGENS WELCOME
+                    </h2>
+                    <p className="mb-8 text-gray-300 leading-relaxed">
+                        Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-700 font-bold">Teto</span> rewards every hour and test your luck on the <span className="text-red-700 font-bold">Wheel</span>!
+                    </p>
+                    
+                    <div className="space-y-3 my-8 flex flex-col items-center text-gray-200">
+                        <div className="flex items-center p-2 rounded-lg">
+                            <span className="text-xl mr-3 text-red-700">⛩</span>
+                            <span>Hourly Teto Rewards</span>
+                        </div>
+                        <div className="flex items-center p-2 rounded-lg">
+                            <span className="text-xl mr-3 text-red-700">⛩</span>
+                            <span>Lottery Wheel Gambling</span>
+                        </div>
+                        <div className="flex items-center p-2 rounded-lg">
+                            <span className="text-xl mr-3 text-red-700">⛩</span>
+                            <span>Degen Duels</span>
+                        </div>
+                    </div>
+                    
+                    <button onClick={handleConnectClick} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
+                        {icons.wallet}
+                        <span className="ml-2">Connect Wallet</span>
+                    </button>
+                </div>
+            );
+        }
+
+        return (
+            <div>
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <p className="text-sm text-gray-400">Wallet Connected</p>
+                        <p className="font-mono text-lg">{truncatePublicKey(publicKey)}</p>
+                    </div>
+                    <button onClick={disconnectWallet} className="bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 shadow-md hover:shadow-red-700/50">
+                        Disconnect
+                    </button>
+                </div>
+
+                <div className="bg-gray-800 p-6 rounded-lg mb-6 shadow-inner">
+                    <h3 className="text-lg font-semibold text-gray-300 mb-4">Your TETO Balance</h3>
+                    <p className="text-4xl font-bold text-white">{tetoBalance.toLocaleString()}</p>
+                    <p className="text-yellow-400">TETO</p>
+                </div>
+
+                <div className="bg-gray-800 p-6 rounded-lg mb-6 shadow-inner">
+                    <h3 className="text-lg font-semibold text-gray-300 mb-2">TETO Rewards</h3>
+                    <div className="mb-4">
+                        <p className="font-bold text-gray-400">NFT Verification</p>
+                        <p className={`font-semibold ${nftCount > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                            {nftCount > 0 ? 'You are a verified NFT warrior!' : 'No verifiable NFTs found in wallet.'}
+                        </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div>
+                            <p className="font-bold text-gray-400">NFTs Held</p>
+                            <p className="text-white text-xl font-semibold">{nftCount}</p>
+                        </div>
+                        <div>
+                            <p className="font-bold text-gray-400">Rewards per Hour</p>
+                            <p className="text-white text-xl font-semibold">{nftCount * 10} TETO</p>
+                        </div>
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-400">Accumulated Rewards</p>
+                        <p className="text-3xl font-bold text-green-400">{accumulatedRewards}</p>
+                    </div>
+                    <button 
+                        onClick={claimAccruedReward} 
+                        disabled={!canClaim} 
+                        className={`w-full mt-6 font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-300 shadow-lg ${canClaim ? 'bg-green-500 hover:bg-green-600 text-white cursor-pointer hover:shadow-green-500/50' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}>
+                        {icons.claim}
+                        <span className="ml-2">{canClaim ? `Claim ${accumulatedRewards} TETO` : 'Nothing to Claim'}</span>
+                    </button>
+                    {lastClaimTimestamp && nftCount > 0 && !canClaim && (
+                         <p className="text-center text-sm text-gray-400 mt-2">
+                             Next reward accrues in: {formatTime(timeUntilNextHour)}
+                         </p>
+                    )}
+                </div>
+            </div>
+        );
+    };
+    
+    return (
+        <>
+            <style>
+                {`
+                    @import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap');
+                    .font-russo-one {
+                        font-family: 'Russo One', sans-serif;
+                    }
+                    .red-glow {
+                        border: 1px solid #b91c1c; /* red-700 */
+                        box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c;
+                    }
+                    /* [MODIFIED] Added subtle red text glow */
+                    .text-glow {
+                        text-shadow: 0 0 8px rgba(255, 0, 0, 0.4);
+                    }
+                `}
+            </style>
+            <div 
+                className="min-h-screen font-russo-one p-4 sm:p-6 md:p-8 flex items-center justify-center text-glow"
+                style={{
+                    backgroundImage: "url('dojo-bg.jpg.jpg')",
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    backgroundRepeat: 'no-repeat',
+                    color: '#fff' // Default text color to white
+                }}
+            >
+                <div className="w-full max-w-md mx-auto">
+                    <div id="message-box" className="hidden fixed top-5 right-5 bg-blue-500 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-opacity duration-500"></div>
+                    
+                    <main className="bg-gray-800/10 backdrop-blur-sm p-6 rounded-xl shadow-lg red-glow">
+                        {renderContent()}
+                    </main>
+                </div>
+            </div>
+        </>
+    );
 }
