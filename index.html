@@ -159,7 +159,6 @@
                 return () => clearInterval(interval);
             }, [lastClaimTimestamp, nftCount]);
 
-            // [FIXED] Updated NFT verification logic
             const checkNFTCount = async (ownerPublicKey) => {
                 if (!ownerPublicKey) return 0;
                 try {
@@ -175,16 +174,12 @@
                     });
                     const { result } = await response.json();
                     
-                    console.log("Helius API Response:", result); // For debugging
-
                     if (result && result.items) {
                         const verifiedNfts = result.items.filter(nft => {
-                            // Helius returns `grouping` as an array. We need to check if any item in the array is a collection match.
                             return nft.grouping && nft.grouping.some(group => 
                                 group.group_key === 'collection' && collectionMintAddresses.includes(group.group_value)
                             );
                         });
-                        console.log(`Found ${verifiedNfts.length} verified NFTs.`);
                         return verifiedNfts.length;
                     }
                 } catch (error) {
@@ -251,7 +246,9 @@
                 try {
                     await userDocRef.update({
                         balance: newBalance,
-                        lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp() 
+                        lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        nftCount: nftCount, 
+                        walletAddress: publicKey.toString() 
                     });
                     showMessage(`Claimed ${accumulatedRewards} TETO!`);
                     setAccumulatedRewards(0);
@@ -325,9 +322,9 @@
                         <div className="bg-gray-800/10 p-6 rounded-xl shadow-lg red-glow mb-6">
                             <h3 className="text-lg font-semibold text-gray-300 mb-2">TETO Rewards</h3>
                             <div className="mb-4">
-                                <p className="font-bold text-gray-400">NFT Verification</p>
+                                <p className="font-bold text-gray-400">Holder Status</p>
                                 <p className={`font-semibold ${nftCount > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-                                    {nftCount > 0 ? 'You are a verified NFT warrior!' : 'No verifiable NFTs found in wallet.'}
+                                    {nftCount > 0 ? 'True Degen' : 'No verifiable NFTs found in wallet.'}
                                 </p>
                             </div>
                             <div className="grid grid-cols-2 gap-4 mb-6">
