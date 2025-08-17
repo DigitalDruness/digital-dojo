@@ -107,7 +107,7 @@
 
             // Effect 1: Initialize Firebase ONCE on component mount
             useEffect(() => {
-                // [FIXED] Rely on environment-provided config to prevent mismatch errors
+                // [FIXED] Reverted to using the environment-provided config to prevent token mismatch.
                 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
                 try {
@@ -248,7 +248,7 @@
                     showMessage("Wallet provider not found!");
                     return;
                 }
-                if (!auth.currentUser) {
+                if (!auth || !auth.currentUser) {
                     showMessage("Please wait for authentication to complete.");
                     return;
                 }
@@ -346,11 +346,17 @@
                                 </div>
                             </div>
                             <div className="flex space-x-4">
-                                <button onClick={() => connectWallet(window.solana)} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
+                                <button 
+                                    onClick={() => connectWallet(window.solana)} 
+                                    disabled={!isAuthReady}
+                                    className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50 disabled:bg-gray-500 disabled:cursor-not-allowed">
                                     {icons.wallet}
                                     <span className="ml-2">Phantom</span>
                                 </button>
-                                <button onClick={() => connectWallet(window.solflare)} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
+                                <button 
+                                    onClick={() => connectWallet(window.solflare)} 
+                                    disabled={!isAuthReady}
+                                    className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50 disabled:bg-gray-500 disabled:cursor-not-allowed">
                                     {icons.wallet}
                                     <span className="ml-2">Solflare</span>
                                 </button>
