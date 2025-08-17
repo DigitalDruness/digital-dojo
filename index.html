@@ -1,334 +1,426 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digital Dojo</title>
-    <!-- Tailwind CSS CDN for styling -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Digital-Dojo</title>
+    
+    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Solana Wallet Adapter CDN -->
-    <script src="https://unpkg.com/@solana/wallet-adapter-phantom@0.9.15/dist/bundle.iife.js"></script>
+    
+    <!-- React Libraries -->
+    <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    
+    <!-- Babel to transpile JSX in the browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Firebase v9 Compat Libraries -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    
     <style>
-        /* Font Imports */
-        @import url('https://fonts.googleapis.com/css2?family=VT323&family=Noto+Sans+JP:wght@700&family=Zen+Antique&display=swap');
-        .font-vt323 { font-family: 'VT323', monospace; }
-        .font-noto-sans-jp { font-family: 'Noto Sans JP', sans-serif; }
-        .font-zen-antique { font-family: 'Zen Antique', serif; }
+        /* Basic body styling to match the app's dark theme */
         body {
-            font-family: 'VT323', monospace;
-            background-color: #1f2937;
-        }
-        .wallet-connect-button {
-            @apply w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 border-2 border-red-400 text-white font-bold py-4 px-8 text-lg rounded-xl transition-all duration-300 shadow-lg hover:shadow-red-500/50;
-        }
-        .message-box {
-            position: fixed;
-            bottom: 1rem;
-            right: 1rem;
-            z-index: 1000;
-            background-color: #333;
-            color: white;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            display: none;
+            background-color: #111827; /* gray-900 */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen relative overflow-hidden font-vt323">
+<body>
+    <!-- The root element where the React app will be mounted -->
+    <div id="root"></div>
 
-    <!-- Background Image and Overlay -->
-    <div
-        class="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style="background-image: url('dojo-bg.jpg.jpg'); filter: brightness(0.4); background-size: cover; background-position: center;">
-    </div>
-    <div class="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80"></div>
+    <!-- This div is required by the App.jsx component for showing messages -->
+    <div id="message-box" style="display: none;"></div>
 
-    <!-- Main Content Container -->
-    <div class="relative z-10 flex items-center justify-center min-h-screen p-4">
-        <div class="text-center max-w-2xl w-full">
-            <div id="app-container" class="bg-black/30 backdrop-blur-lg rounded-3xl p-10 border-2 border-red-500/50 shadow-2xl">
-                <!-- Content will be injected here by JavaScript -->
-            </div>
-        </div>
-    </div>
-    
-    <!-- Message Box for Alerts -->
-    <div id="messageBox" class="message-box"></div>
+    <!-- [MODIFIED] The App.jsx code is now directly inside the HTML file -->
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-    <script>
-        // Placeholder Icons as inline SVG strings for easy use in JS
-        const icons = {
-            Coins: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-yellow-400">
-                      <circle cx="8" cy="8" r="6" />
-                      <path d="M18.09 10.37A6 6 0 1 1 10.34 18M7 6h1.22a9 9 0 0 0 6.66 12.66" />
-                    </svg>`,
-            Clock: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-red-400">
-                      <circle cx="12" cy="12" r="10" />
-                      <polyline points="12 6 12 12 16 14" />
-                    </svg>`,
-            Swords: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-white animate-pulse">
-                      <polyline points="14.5 17.5 17.5 14.5" />
-                      <path d="M2.5 13.5l1.5 1.5c-3-3 6-6 9-9l1.5 1.5" />
-                      <path d="M11 22l1.5-1.5c3 3 6-6 9-9l-1.5-1.5" />
-                      <path d="M4 16l-1.5-1.5c-3 3-6 6-9 9l1.5 1.5" />
-                    </svg>`,
-            Zap: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-yellow-400">
-                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                  </svg>`,
-            Trophy: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-yellow-400">
-                      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-                      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-                      <path d="M4.5 15.5H19.5" />
-                      <path d="M12 17.5v3" />
-                      <path d="M19.5 9h-15V4a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1z" />
-                      <path d="M12 17.5a2.5 2.5 0 0 1-2.5-2.5v-10h5v10a2.5 2.5 0 0 1-2.5 2.5z" />
-                    </svg>`,
-        };
+        // --- Global variables & Firebase Initialization ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
-        const appContainer = document.getElementById('app-container');
-        const messageBox = document.getElementById('messageBox');
-        let wallet = null;
-        let publicKey = null;
-        let tetoBalance = 0;
-        let isVerified = false;
-        let lastClaimTime = null;
-        let timeUntilNextClaim = 0;
-        let timerInterval = null;
+        let app, auth, db;
+        if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
+            if (!firebase.apps.length) {
+                app = firebase.initializeApp(firebaseConfig);
+            } else {
+                app = firebase.app();
+            }
+            auth = firebase.auth();
+            db = firebase.firestore();
+        } else {
+            console.warn("Firebase config is missing. App will not connect to backend.");
+        }
 
-        // A simple toast-like notification system
+        // --- Helius API & NFT Collections ---
+        const heliusApiKey = "6e2b3a8b-d410-46b1-9cc9-53d9dec76d02"; 
+        const heliusEndpoint = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+        const collectionMintAddresses = [
+            "2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb",
+            "DmRQEKrjRHrEVT8TNc7kWLjKbCv7RTn672LrgpnFagah",
+            "dgd6We3oS4M5LSVzT6Ep39wwVpjLC336tCpyPZkLAHx",
+            "FdpDYUWYC8PekGttXz9kPb48CxVjpiEm5NaBb3X6zExy",
+            "HEyazxpV2wxMUvNx53UZUXthRS9Rjsbv7hoHYJNbVedC",
+            "DoJoE6b8Lbb1t8qcdm4qDRXLS7RvadZo9Rfz8xq2VgLx"
+        ];
+
+        // --- Utility Functions ---
         const showMessage = (message) => {
-            messageBox.textContent = message;
-            messageBox.style.display = 'block';
-            setTimeout(() => {
-                messageBox.style.display = 'none';
-            }, 5000);
+            const messageElement = document.getElementById('message-box');
+            if (messageElement) {
+                messageElement.textContent = message;
+                messageElement.style.display = 'block';
+                messageElement.style.opacity = 1;
+                setTimeout(() => {
+                    messageElement.style.opacity = 0;
+                    setTimeout(() => {
+                        messageElement.style.display = 'none';
+                    }, 500);
+                }, 3000);
+            }
         };
 
-        // Utility function to format time in minutes and seconds
         const formatTime = (ms) => {
-            if (ms <= 0) return 'Ready to Claim!';
-            const minutes = Math.floor(ms / (1000 * 60));
-            const seconds = Math.floor((ms % (1000 * 60)) / 1000);
-            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            if (ms <= 0) return "00:00:00";
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         };
 
-        // Utility function to truncate the public key for display
         const truncatePublicKey = (key) => {
             if (!key) return '';
-            const keyStr = key.toString();
-            return `${keyStr.substring(0, 4)}...${keyStr.slice(-4)}`;
+            const str = key.toString();
+            return str.length > 8 ? `${str.substring(0, 4)}...${str.substring(str.length - 4)}` : str;
         };
 
-        // Renders the view when the wallet is not connected
-        const renderDisconnectedView = () => {
-            appContainer.innerHTML = `
-                <div>
-                    <div class="mb-6">
-                        <h3 class="text-3xl font-bold text-red-900 mb-4 font-noto-sans-jp">
-                            TRUE DEGENS WELCOME
-                        </h3>
-                        <p class="text-red-200 text-lg leading-relaxed">
-                            Connect your Solana wallet to verify your holder status and begin your training. Earn <span class="text-red-900 font-bold">Teto</span> rewards every hour and test your luck on the <span class="text-red-900 font-bold">Wheel</span>!
-                        </p>
-                    </div>
-                    <div class="text-center mb-6">
-                        <p class="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
-                            <span class="text-red-900">⛩</span>
-                            <span>Hourly Teto Rewards</span>
-                        </p>
-                        <p class="mb-2 text-red-200 font-semibold flex items-center justify-center space-x-2">
-                            <span class="text-red-900">⛩</span>
-                            <span>Lottery Wheel Gambling</span>
-                        </p>
-                        <p class="text-red-200 font-semibold flex items-center justify-center space-x-2">
-                            <span class="text-red-900">⛩</span>
-                            <span>Degen Duels</span>
-                        </p>
-                    </div>
-                    <div class="relative">
-                        <button id="connect-button" class="wallet-connect-button relative z-20">
-                            Connect Wallet
-                        </button>
-                        <div class="absolute -inset-1 bg-gradient-to-r from-red-600 to-red-400 rounded-xl blur opacity-30 animate-pulse z-10"></div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('connect-button').addEventListener('click', connectWallet);
+        const icons = {
+            wallet: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>,
+            claim: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01M12 6v-1m0-1V4m0 2.01V5M12 20v-1m0-1v-1m0-1v-1m0-1v-1m0-1v-1"></path></svg>
         };
 
-        // Renders the view when the wallet is connected
-        const renderConnectedView = () => {
-            appContainer.innerHTML = `
-                <div>
-                    <header class="mb-8">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <h2 class="text-3xl font-bold text-red-900">TETO REWARDS</h2>
-                            </div>
-                            <div class="flex items-center space-x-4">
-                                <button id="disconnect-button" class="bg-gray-700 hover:bg-gray-800 text-red-900 font-bold py-2 px-4 rounded-xl transition-colors">
-                                    Disconnect
-                                </button>
-                                <span class="text-red-900">Connected: ${truncatePublicKey(publicKey)}</span>
-                            </div>
-                        </div>
-                    </header>
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div class="lg:col-span-1 space-y-6">
-                            <div class="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
-                                <h3 class="text-2xl font-bold text-red-900 mb-4 font-vt323">NFT Verification</h3>
-                                <p id="verification-status" class="text-red-200 font-vt323">
-                                    ${isVerified ? "You are a verified NFT warrior!" : "Verify your NFT to claim rewards."}
-                                </p>
-                            </div>
-                            <div class="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
-                                <h3 class="text-2xl font-bold text-red-900 mb-4 font-vt323">Teto Rewards</h3>
-                                <div class="flex items-center space-x-2 mt-4">
-                                    ${icons.Coins}
-                                    <span id="teto-balance" class="text-4xl font-bold text-red-900 font-vt323">${tetoBalance} TETO</span>
-                                </div>
-                                <div class="mt-4">
-                                    <div class="flex items-center justify-between text-red-200 font-vt323">
-                                        <div class="flex items-center space-x-2">
-                                            ${icons.Clock}
-                                            <span>Next Claim:</span>
-                                        </div>
-                                        <span id="claim-timer" class="text-xl font-bold">
-                                            ${isVerified ? formatTime(timeUntilNextClaim) : 'Not Verified'}
-                                        </span>
-                                    </div>
-                                </div>
-                                <button
-                                    id="claim-reward-btn"
-                                    class="w-full mt-6 py-3 px-6 rounded-xl font-bold transition-all duration-300 font-vt323
-                                    ${!isVerified || timeUntilNextClaim > 0 ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-green-500/50'}"
-                                    ${!isVerified || timeUntilNextClaim > 0 ? 'disabled' : ''}>
-                                    Claim 10 TETO
-                                </button>
-                            </div>
-                        </div>
-                        <div class="lg:col-span-2">
-                            <div class="bg-black/30 backdrop-blur-lg rounded-3xl p-8 border-2 border-red-500/50 shadow-2xl">
-                                <h3 class="text-2xl font-bold text-red-900 mb-4 font-vt323">Lottery Wheel</h3>
-                                <p class="text-red-200 font-vt323">
-                                    The wheel of fortune is not yet implemented.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('disconnect-button').addEventListener('click', disconnectWallet);
-            document.getElementById('claim-reward-btn').addEventListener('click', claimHourlyReward);
-        };
+        // --- Main App Component ---
+        function App() {
+            const [publicKey, setPublicKey] = useState(null);
+            const [walletProvider, setWalletProvider] = useState(null); 
+            const [isAuthReady, setIsAuthReady] = useState(false);
+            const [tetoBalance, setTetoBalance] = useState(0);
+            const [lastClaimTimestamp, setLastClaimTimestamp] = useState(null);
+            const [nftCount, setNftCount] = useState(0);
+            const [canClaim, setCanClaim] = useState(false);
+            const [isLoading, setIsLoading] = useState(true);
+            const [accumulatedRewards, setAccumulatedRewards] = useState(0);
+            const [timeUntilNextHour, setTimeUntilNextHour] = useState(0);
 
-        // Updates the UI state, called after state changes
-        const updateUI = () => {
-            if (publicKey) {
-                document.getElementById('teto-balance').textContent = `${tetoBalance} TETO`;
-                document.getElementById('verification-status').textContent = isVerified ? "You are a verified NFT warrior!" : "Verify your NFT to claim rewards.";
-                document.getElementById('claim-timer').textContent = isVerified ? formatTime(timeUntilNextClaim) : 'Not Verified';
-                
-                const claimBtn = document.getElementById('claim-reward-btn');
-                const canClaim = isVerified && timeUntilNextClaim <= 0;
-                claimBtn.disabled = !canClaim;
-                if (canClaim) {
-                    claimBtn.classList.add('bg-green-600', 'hover:bg-green-700', 'text-white', 'shadow-lg', 'hover:shadow-green-500/50');
-                    claimBtn.classList.remove('bg-gray-700', 'text-gray-400', 'cursor-not-allowed');
-                } else {
-                    claimBtn.classList.add('bg-gray-700', 'text-gray-400', 'cursor-not-allowed');
-                    claimBtn.classList.remove('bg-green-600', 'hover:bg-green-700', 'text-white', 'shadow-lg', 'hover:shadow-green-500/50');
+            useEffect(() => {
+                if (!auth || !db) {
+                    setIsLoading(false);
+                    return;
                 }
-            }
-        };
+                const initAuth = async () => {
+                    try {
+                        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
+                        if (initialAuthToken) {
+                            await auth.signInWithCustomToken(initialAuthToken);
+                        } else {
+                            await auth.signInAnonymously();
+                        }
+                    } catch (error) {
+                        console.error("Firebase Auth Error:", error);
+                        showMessage("Authentication failed.");
+                    }
+                };
+                const unsubscribe = auth.onAuthStateChanged((user) => {
+                    if (user) {
+                        setIsAuthReady(true);
+                        const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('tetoRewards').doc('userData');
+                        const unsubSnapshot = userDocRef.onSnapshot((docSnap) => {
+                            if (docSnap.exists) {
+                                const data = docSnap.data();
+                                setTetoBalance(data.balance || 0);
+                                setLastClaimTimestamp(data.lastClaimTimestamp?.toMillis() || Date.now());
+                                setNftCount(data.nftCount || 0);
+                                if (data.walletAddress) {
+                                    setPublicKey({ toString: () => data.walletAddress });
+                                }
+                            } else {
+                                userDocRef.set({ balance: 0, nftCount: 0, lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp(), walletAddress: null });
+                            }
+                            setIsLoading(false);
+                        }, (error) => {
+                            console.error("Firestore Snapshot Error:", error);
+                            showMessage("Error fetching user data.");
+                            setIsLoading(false);
+                        });
+                        return () => unsubSnapshot();
+                    } else {
+                        setIsLoading(false);
+                        setIsAuthReady(false);
+                        setPublicKey(null);
+                    }
+                });
+                initAuth();
+                return () => unsubscribe();
+            }, []);
 
-        // Loads state from local storage and starts the timer
-        const loadState = () => {
-            if (publicKey) {
-                const pubKeyStr = publicKey.toString();
-                tetoBalance = parseInt(localStorage.getItem(`teto_balance_${pubKeyStr}`)) || 0;
-                lastClaimTime = parseInt(localStorage.getItem(`last_claim_${pubKeyStr}`)) || null;
-                isVerified = JSON.parse(localStorage.getItem(`verified_${pubKeyStr}`)) || false;
-                
-                // For demonstration, let's assume verification is successful for now.
-                // In a real app, this would be a check against a blockchain.
-                isVerified = true;
-                localStorage.setItem(`verified_${pubKeyStr}`, JSON.stringify(true));
-
-                // Start or restart the timer
-                if (timerInterval) clearInterval(timerInterval);
-                timerInterval = setInterval(() => {
+            useEffect(() => {
+                if (!lastClaimTimestamp || nftCount <= 0) {
+                    setCanClaim(false);
+                    setAccumulatedRewards(0);
+                    return;
+                }
+                const interval = setInterval(() => {
                     const now = Date.now();
-                    const hourInMs = 60 * 60 * 1000;
-                    const timeSinceLastClaim = now - (lastClaimTime || now);
-                    const timeLeft = hourInMs - timeSinceLastClaim;
-                    timeUntilNextClaim = timeLeft > 0 ? timeLeft : 0;
-                    updateUI(); // Update UI every second
+                    const elapsed = now - lastClaimTimestamp;
+                    const hoursElapsed = elapsed / (1000 * 60 * 60);
+                    const rewards = Math.floor(hoursElapsed * nftCount * 10);
+                    setAccumulatedRewards(rewards);
+                    setCanClaim(rewards > 0);
+                    const msInHour = 1000 * 60 * 60;
+                    const nextHour = Math.ceil(now / msInHour) * msInHour;
+                    setTimeUntilNextHour(nextHour - now);
                 }, 1000);
-            }
-        };
+                return () => clearInterval(interval);
+            }, [lastClaimTimestamp, nftCount]);
 
-        // Function to connect a wallet
-        const connectWallet = async () => {
-            try {
-                const { solana } = window;
-                if (solana && solana.isPhantom) {
-                    wallet = solana;
-                    const response = await wallet.connect();
-                    publicKey = response.publicKey;
-                    
-                    loadState();
-                    renderConnectedView();
-                    updateUI();
-                    
-                    showMessage(`Wallet connected: ${publicKey.toString()}`);
-                } else {
-                    showMessage('Phantom wallet not found! Please install Phantom.');
+            const checkNFTCount = async (ownerPublicKey) => {
+                if (!ownerPublicKey) return 0;
+                try {
+                    const response = await fetch(heliusEndpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            jsonrpc: '2.0',
+                            id: 'my-id',
+                            method: 'getAssetsByOwner',
+                            params: { ownerAddress: ownerPublicKey.toString(), page: 1, limit: 1000 },
+                        }),
+                    });
+                    const { result } = await response.json();
+                    if (result && result.items) {
+                        return result.items.filter(nft =>
+                            nft.grouping?.group_key === 'collection' &&
+                            collectionMintAddresses.includes(nft.grouping.group_value)
+                        ).length;
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch NFTs from Helius:", error);
+                    showMessage("Could not verify NFT count.");
                 }
-            } catch (error) {
-                console.error('Failed to connect wallet:', error);
-                showMessage('Failed to connect wallet. See console for details.');
-            }
-        };
+                return 0;
+            };
 
-        // Function to disconnect the wallet
-        const disconnectWallet = async () => {
-            if (wallet) {
-                await wallet.disconnect();
-                publicKey = null;
-                wallet = null;
-                if (timerInterval) clearInterval(timerInterval);
-                renderDisconnectedView();
+            const connectWallet = async (provider) => {
+                if (!provider) {
+                    showMessage("Wallet provider not found!");
+                    return;
+                }
+                if (!auth.currentUser) return showMessage("Please wait for authentication.");
+                try {
+                    const response = await provider.connect();
+                    const connectedPublicKey = response.publicKey;
+                    setPublicKey(connectedPublicKey);
+                    setWalletProvider(provider); 
+                    const count = await checkNFTCount(connectedPublicKey);
+                    const userId = auth.currentUser.uid;
+                    const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('tetoRewards').doc('userData');
+                    await userDocRef.set({ 
+                        nftCount: count,
+                        walletAddress: connectedPublicKey.toString()
+                    }, { merge: true });
+                    showMessage(`Wallet connected: ${truncatePublicKey(connectedPublicKey)}`);
+                } catch (error) {
+                    console.error('Failed to connect wallet:', error);
+                    showMessage("Wallet connection failed.");
+                }
+            };
+
+            const handleConnectClick = () => {
+                const provider = window.solflare || window.solana;
+                if (provider) {
+                    connectWallet(provider);
+                } else {
+                    showMessage("No Solana wallet found. Please install Phantom or Solflare.");
+                }
+            };
+
+            const disconnectWallet = async () => {
+                if (walletProvider && walletProvider.disconnect) {
+                    try {
+                        await walletProvider.disconnect();
+                    } catch (error) {
+                         console.error('Failed to disconnect wallet:', error);
+                    }
+                } else {
+                     const { solana, solflare } = window;
+                     if (solana && solana.disconnect) await solana.disconnect();
+                     if (solflare && solflare.disconnect) await solflare.disconnect();
+                }
+                setPublicKey(null);
+                setWalletProvider(null);
+                const userId = auth.currentUser?.uid;
+                if (userId) {
+                    const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('tetoRewards').doc('userData');
+                    await userDocRef.update({ walletAddress: null, nftCount: 0 });
+                }
                 showMessage('Wallet disconnected.');
-            }
-        };
+            };
 
-        // Function to handle the hourly reward claim
-        const claimHourlyReward = () => {
-            if (!isVerified || !publicKey) return;
-            
-            const now = Date.now();
-            const hourInMs = 60 * 60 * 1000;
-            
-            if (!lastClaimTime || (now - lastClaimTime) >= hourInMs) {
-                const reward = 10;
-                tetoBalance += reward;
-                lastClaimTime = now;
-                
-                const pubKeyStr = publicKey.toString();
-                localStorage.setItem(`teto_balance_${pubKeyStr}`, tetoBalance.toString());
-                localStorage.setItem(`last_claim_${pubKeyStr}`, lastClaimTime.toString());
-                
-                showMessage(`Claimed 10 TETO! New balance: ${tetoBalance}`);
-                loadState(); // Reload the state to refresh the timer
-            } else {
-                showMessage("It's not time to claim yet!");
-            }
-        };
-        
-        // Initial render on page load
-        document.addEventListener('DOMContentLoaded', renderDisconnectedView);
+            const claimAccruedReward = async () => {
+                if (!canClaim || accumulatedRewards <= 0 || !auth.currentUser) return;
+                const newBalance = tetoBalance + accumulatedRewards;
+                const userId = auth.currentUser.uid;
+                const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('tetoRewards').doc('userData');
+                try {
+                    await userDocRef.update({
+                        balance: newBalance,
+                        lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp() 
+                    });
+                    showMessage(`Claimed ${accumulatedRewards} TETO!`);
+                    setAccumulatedRewards(0);
+                    setCanClaim(false);
+                } catch (error) {
+                    console.error("Error claiming reward:", error);
+                    showMessage("Claim failed. The server denied the request.");
+                }
+            };
+
+            const renderContent = () => {
+                if (isLoading) {
+                    return <div className="text-center text-gray-400 animate-pulse">Loading TETO data...</div>;
+                }
+                if (!publicKey) {
+                    return (
+                        <div className="text-center">
+                            <h2 className="text-2xl font-bold mb-4 text-red-700 tracking-wider">
+                                TRUE DEGENS WELCOME
+                            </h2>
+                            <p className="mb-8 text-gray-300 leading-relaxed">
+                                Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-700 font-bold">Teto</span> rewards every hour and test your luck on the <span className="text-red-700 font-bold">Wheel</span>!
+                            </p>
+                            <div className="space-y-3 my-8 flex flex-col items-center text-gray-200">
+                                <div className="flex items-center p-2 rounded-lg">
+                                    <span className="text-xl mr-3 text-red-700">⛩</span>
+                                    <span>Hourly Teto Rewards</span>
+                                </div>
+                                <div className="flex items-center p-2 rounded-lg">
+                                    <span className="text-xl mr-3 text-red-700">⛩</span>
+                                    <span>Lottery Wheel Gambling</span>
+                                </div>
+                                <div className="flex items-center p-2 rounded-lg">
+                                    <span className="text-xl mr-3 text-red-700">⛩</span>
+                                    <span>Degen Duels</span>
+                                </div>
+                            </div>
+                            <button onClick={handleConnectClick} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
+                                {icons.wallet}
+                                <span className="ml-2">Connect Wallet</span>
+                            </button>
+                        </div>
+                    );
+                }
+                return (
+                    <div>
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <p className="text-sm text-gray-400">Wallet Connected</p>
+                                <p className="font-mono text-lg">{truncatePublicKey(publicKey)}</p>
+                            </div>
+                            <button onClick={disconnectWallet} className="bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 shadow-md hover:shadow-red-700/50">
+                                Disconnect
+                            </button>
+                        </div>
+                        <div className="bg-gray-800 p-6 rounded-lg mb-6 shadow-inner">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-4">Your TETO Balance</h3>
+                            <p className="text-4xl font-bold text-white">{tetoBalance.toLocaleString()}</p>
+                            <p className="text-yellow-400">TETO</p>
+                        </div>
+                        <div className="bg-gray-800 p-6 rounded-lg mb-6 shadow-inner">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-2">TETO Rewards</h3>
+                            <div className="mb-4">
+                                <p className="font-bold text-gray-400">NFT Verification</p>
+                                <p className={`font-semibold ${nftCount > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                                    {nftCount > 0 ? 'You are a verified NFT warrior!' : 'No verifiable NFTs found in wallet.'}
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div>
+                                    <p className="font-bold text-gray-400">NFTs Held</p>
+                                    <p className="text-white text-xl font-semibold">{nftCount}</p>
+                                </div>
+                                <div>
+                                    <p className="font-bold text-gray-400">Rewards per Hour</p>
+                                    <p className="text-white text-xl font-semibold">{nftCount * 10} TETO</p>
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-sm text-gray-400">Accumulated Rewards</p>
+                                <p className="text-3xl font-bold text-green-400">{accumulatedRewards}</p>
+                            </div>
+                            <button 
+                                onClick={claimAccruedReward} 
+                                disabled={!canClaim} 
+                                className={`w-full mt-6 font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-300 shadow-lg ${canClaim ? 'bg-green-500 hover:bg-green-600 text-white cursor-pointer hover:shadow-green-500/50' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}>
+                                {icons.claim}
+                                <span className="ml-2">{canClaim ? `Claim ${accumulatedRewards} TETO` : 'Nothing to Claim'}</span>
+                            </button>
+                            {lastClaimTimestamp && nftCount > 0 && !canClaim && (
+                                 <p className="text-center text-sm text-gray-400 mt-2">
+                                     Next reward accrues in: {formatTime(timeUntilNextHour)}
+                                 </p>
+                            )}
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <>
+                    <style>
+                        {`
+                            @import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap');
+                            .font-russo-one {
+                                font-family: 'Russo One', sans-serif;
+                            }
+                            .red-glow {
+                                border: 1px solid #b91c1c; /* red-700 */
+                                box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c;
+                            }
+                            .text-glow {
+                                text-shadow: 0 0 8px rgba(255, 0, 0, 0.4);
+                            }
+                        `}
+                    </style>
+                    <div 
+                        className="min-h-screen font-russo-one p-4 sm:p-6 md:p-8 flex items-center justify-center text-glow"
+                        style={{
+                            backgroundImage: "url('dojo-bg.jpg.jpg')",
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            backgroundRepeat: 'no-repeat',
+                            color: '#fff' 
+                        }}
+                    >
+                        <div className="w-full max-w-md mx-auto">
+                            <div id="message-box" className="hidden fixed top-5 right-5 bg-blue-500 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-opacity duration-500"></div>
+                            
+                            <main className="bg-gray-800/10 backdrop-blur-sm p-6 rounded-xl shadow-lg red-glow">
+                                {renderContent()}
+                            </main>
+                        </div>
+                    </div>
+                </>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
     </script>
+    
 </body>
 </html>
