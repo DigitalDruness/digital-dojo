@@ -90,7 +90,6 @@
 
         // --- Main App Component ---
         function App() {
-            // [FIXED] Firebase services are now stored in state
             const [auth, setAuth] = useState(null);
             const [db, setDb] = useState(null);
             const [appId, setAppId] = useState(null);
@@ -106,39 +105,39 @@
             const [accumulatedRewards, setAccumulatedRewards] = useState(0);
             const [timeUntilNextHour, setTimeUntilNextHour] = useState(0);
 
-            // [FIXED] Effect 1: Initialize Firebase ONCE on component mount
+            // Effect 1: Initialize Firebase ONCE on component mount
             useEffect(() => {
-                const firebaseConfig = {
-                    apiKey: "AIzaSyDEhTzJiImbtTNJdScLz6DxNWRAg7Rkm1A",
-                    authDomain: "digital-dojo-482eb.firebaseapp.com",
-                    projectId: "digital-dojo-482eb",
-                    storageBucket: "digital-dojo-482eb.appspot.com",
-                    messagingSenderId: "112511358197",
-                    appId: "1:112511358197:web:cd1df35fa9543cafbe61bc"
-                };
+                // [FIXED] Rely on environment-provided config to prevent mismatch errors
+                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
                 try {
-                    if (!firebase.apps.length) {
-                        const app = firebase.initializeApp(firebaseConfig);
-                        setAuth(app.auth());
-                        setDb(app.firestore());
-                        setAppId(app.options.appId);
-                        console.log("Firebase Initialized Successfully!");
+                    if (firebaseConfig.apiKey) {
+                        if (!firebase.apps.length) {
+                            const app = firebase.initializeApp(firebaseConfig);
+                            setAuth(app.auth());
+                            setDb(app.firestore());
+                            setAppId(app.options.appId);
+                            console.log("Firebase Initialized Successfully!");
+                        } else {
+                            const app = firebase.app();
+                            setAuth(app.auth());
+                            setDb(app.firestore());
+                            setAppId(app.options.appId);
+                            console.log("Firebase Re-used Existing Instance.");
+                        }
                     } else {
-                        const app = firebase.app();
-                        setAuth(app.auth());
-                        setDb(app.firestore());
-                        setAppId(app.options.appId);
-                        console.log("Firebase Re-used Existing Instance.");
+                        console.error("Firebase config is missing or invalid.");
+                        setIsLoading(false);
                     }
                 } catch (error) {
                     console.error("Firebase Initialization Failed:", error);
+                    setIsLoading(false);
                 }
             }, []);
 
-            // [FIXED] Effect 2: Handles Authentication. Runs ONLY after `auth` state is set.
+            // Effect 2: Handles Authentication and Data Fetching.
             useEffect(() => {
-                if (!auth) return; // Don't run if auth is not initialized
+                if (!auth || !db || !appId) return; 
 
                 const initAuth = async () => {
                     try {
@@ -158,6 +157,7 @@
                     if (user) {
                         setIsAuthReady(true);
                         const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('tetoRewards').doc('userData');
+                        
                         const unsubSnapshot = userDocRef.onSnapshot((docSnap) => {
                             if (docSnap.exists) {
                                 const data = docSnap.data();
@@ -168,7 +168,12 @@
                                     setPublicKey({ toString: () => data.walletAddress });
                                 }
                             } else {
-                                userDocRef.set({ balance: 0, nftCount: 0, lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp(), walletAddress: null });
+                                userDocRef.set({ 
+                                    balance: 0, 
+                                    nftCount: 0, 
+                                    lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp(), 
+                                    walletAddress: null 
+                                });
                             }
                             setIsLoading(false);
                         }, (error) => {
@@ -176,7 +181,10 @@
                             showMessage("Error fetching user data.");
                             setIsLoading(false);
                         });
-                        return () => unsubSnapshot();
+                        
+                        return () => {
+                            unsubSnapshot();
+                        };
                     } else {
                         setIsLoading(false);
                         setIsAuthReady(false);
@@ -186,7 +194,7 @@
                 
                 initAuth();
                 return () => unsubscribe();
-            }, [auth, db, appId]); // This effect now correctly depends on auth, db, and appId
+            }, [auth, db, appId]); 
 
             useEffect(() => {
                 if (!lastClaimTimestamp || nftCount <= 0) {
@@ -235,20 +243,9 @@
                 return 0;
             };
 
-            const getProvider = () => {
-                if ('solflare' in window && window.solflare.isSolflare) {
-                    return window.solflare;
-                }
-                if ('solana' in window && window.solana.isPhantom) {
-                    return window.solana;
-                }
-                return null;
-            };
-
-            const connectWallet = async () => {
-                const provider = getProvider();
+            const connectWallet = async (provider) => {
                 if (!provider) {
-                    showMessage("No Solana wallet found. Please install Phantom or Solflare.");
+                    showMessage("Wallet provider not found!");
                     return;
                 }
                 if (!auth.currentUser) {
@@ -276,10 +273,9 @@
             };
 
             const disconnectWallet = async () => {
-                const provider = walletProvider || getProvider();
-                if (provider && provider.disconnect) {
+                if (walletProvider && walletProvider.disconnect) {
                     try {
-                        await provider.disconnect();
+                        await walletProvider.disconnect();
                     } catch (error) {
                          console.error('Failed to disconnect wallet:', error);
                     }
@@ -300,11 +296,19 @@
                 const newBalance = tetoBalance + accumulatedRewards;
                 const userId = auth.currentUser.uid;
                 const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('tetoRewards').doc('userData');
+                const leaderboardDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('leaderboard').doc(userId);
+                
                 try {
                     await userDocRef.update({
                         balance: newBalance,
                         lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp() 
                     });
+
+                    await leaderboardDocRef.set({
+                        balance: newBalance,
+                        walletAddress: publicKey.toString()
+                    }, { merge: true });
+
                     showMessage(`Claimed ${accumulatedRewards} TETO!`);
                     setAccumulatedRewards(0);
                     setCanClaim(false);
@@ -341,10 +345,16 @@
                                     <span>Degen Duels</span>
                                 </div>
                             </div>
-                            <button onClick={connectWallet} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
-                                {icons.wallet}
-                                <span className="ml-2">Connect Wallet</span>
-                            </button>
+                            <div className="flex space-x-4">
+                                <button onClick={() => connectWallet(window.solana)} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
+                                    {icons.wallet}
+                                    <span className="ml-2">Phantom</span>
+                                </button>
+                                <button onClick={() => connectWallet(window.solflare)} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
+                                    {icons.wallet}
+                                    <span className="ml-2">Solflare</span>
+                                </button>
+                            </div>
                         </div>
                     );
                 }
@@ -402,7 +412,7 @@
                     </div>
                 );
             };
-
+            
             return (
                 <>
                     <style>
