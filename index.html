@@ -36,26 +36,9 @@
     <!-- This div is required by the App.jsx component for showing messages -->
     <div id="message-box" style="display: none;"></div>
 
-    <!-- [MODIFIED] The App.jsx code is now directly inside the HTML file -->
+    <!-- The App.jsx code is now directly inside the HTML file -->
     <script type="text/babel">
         const { useState, useEffect } = React;
-
-        // --- Global variables & Firebase Initialization ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-
-        let app, auth, db;
-        if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
-            if (!firebase.apps.length) {
-                app = firebase.initializeApp(firebaseConfig);
-            } else {
-                app = firebase.app();
-            }
-            auth = firebase.auth();
-            db = firebase.firestore();
-        } else {
-            console.warn("Firebase config is missing. App will not connect to backend.");
-        }
 
         // --- Helius API & NFT Collections ---
         const heliusApiKey = "6e2b3a8b-d410-46b1-9cc9-53d9dec76d02"; 
@@ -107,6 +90,11 @@
 
         // --- Main App Component ---
         function App() {
+            // [FIXED] Firebase services are now stored in state
+            const [auth, setAuth] = useState(null);
+            const [db, setDb] = useState(null);
+            const [appId, setAppId] = useState(null);
+
             const [publicKey, setPublicKey] = useState(null);
             const [walletProvider, setWalletProvider] = useState(null); 
             const [isAuthReady, setIsAuthReady] = useState(false);
@@ -118,11 +106,40 @@
             const [accumulatedRewards, setAccumulatedRewards] = useState(0);
             const [timeUntilNextHour, setTimeUntilNextHour] = useState(0);
 
+            // [FIXED] Effect 1: Initialize Firebase ONCE on component mount
             useEffect(() => {
-                if (!auth || !db) {
-                    setIsLoading(false);
-                    return;
+                const firebaseConfig = {
+                    apiKey: "AIzaSyDEhTzJiImbtTNJdScLz6DxNWRAg7Rkm1A",
+                    authDomain: "digital-dojo-482eb.firebaseapp.com",
+                    projectId: "digital-dojo-482eb",
+                    storageBucket: "digital-dojo-482eb.appspot.com",
+                    messagingSenderId: "112511358197",
+                    appId: "1:112511358197:web:cd1df35fa9543cafbe61bc"
+                };
+
+                try {
+                    if (!firebase.apps.length) {
+                        const app = firebase.initializeApp(firebaseConfig);
+                        setAuth(app.auth());
+                        setDb(app.firestore());
+                        setAppId(app.options.appId);
+                        console.log("Firebase Initialized Successfully!");
+                    } else {
+                        const app = firebase.app();
+                        setAuth(app.auth());
+                        setDb(app.firestore());
+                        setAppId(app.options.appId);
+                        console.log("Firebase Re-used Existing Instance.");
+                    }
+                } catch (error) {
+                    console.error("Firebase Initialization Failed:", error);
                 }
+            }, []);
+
+            // [FIXED] Effect 2: Handles Authentication. Runs ONLY after `auth` state is set.
+            useEffect(() => {
+                if (!auth) return; // Don't run if auth is not initialized
+
                 const initAuth = async () => {
                     try {
                         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
@@ -136,6 +153,7 @@
                         showMessage("Authentication failed.");
                     }
                 };
+                
                 const unsubscribe = auth.onAuthStateChanged((user) => {
                     if (user) {
                         setIsAuthReady(true);
@@ -165,9 +183,10 @@
                         setPublicKey(null);
                     }
                 });
+                
                 initAuth();
                 return () => unsubscribe();
-            }, []);
+            }, [auth, db, appId]); // This effect now correctly depends on auth, db, and appId
 
             useEffect(() => {
                 if (!lastClaimTimestamp || nftCount <= 0) {
@@ -216,12 +235,27 @@
                 return 0;
             };
 
-            const connectWallet = async (provider) => {
+            const getProvider = () => {
+                if ('solflare' in window && window.solflare.isSolflare) {
+                    return window.solflare;
+                }
+                if ('solana' in window && window.solana.isPhantom) {
+                    return window.solana;
+                }
+                return null;
+            };
+
+            const connectWallet = async () => {
+                const provider = getProvider();
                 if (!provider) {
-                    showMessage("Wallet provider not found!");
+                    showMessage("No Solana wallet found. Please install Phantom or Solflare.");
                     return;
                 }
-                if (!auth.currentUser) return showMessage("Please wait for authentication.");
+                if (!auth.currentUser) {
+                    showMessage("Please wait for authentication to complete.");
+                    return;
+                }
+
                 try {
                     const response = await provider.connect();
                     const connectedPublicKey = response.publicKey;
@@ -237,31 +271,20 @@
                     showMessage(`Wallet connected: ${truncatePublicKey(connectedPublicKey)}`);
                 } catch (error) {
                     console.error('Failed to connect wallet:', error);
-                    showMessage("Wallet connection failed.");
-                }
-            };
-
-            const handleConnectClick = () => {
-                const provider = window.solflare || window.solana;
-                if (provider) {
-                    connectWallet(provider);
-                } else {
-                    showMessage("No Solana wallet found. Please install Phantom or Solflare.");
+                    showMessage(`Wallet connection failed: ${error.message}`);
                 }
             };
 
             const disconnectWallet = async () => {
-                if (walletProvider && walletProvider.disconnect) {
+                const provider = walletProvider || getProvider();
+                if (provider && provider.disconnect) {
                     try {
-                        await walletProvider.disconnect();
+                        await provider.disconnect();
                     } catch (error) {
                          console.error('Failed to disconnect wallet:', error);
                     }
-                } else {
-                     const { solana, solflare } = window;
-                     if (solana && solana.disconnect) await solana.disconnect();
-                     if (solflare && solflare.disconnect) await solflare.disconnect();
                 }
+                
                 setPublicKey(null);
                 setWalletProvider(null);
                 const userId = auth.currentUser?.uid;
@@ -293,7 +316,7 @@
 
             const renderContent = () => {
                 if (isLoading) {
-                    return <div className="text-center text-gray-400 animate-pulse">Loading TETO data...</div>;
+                    return <div className="text-center text-gray-400 animate-pulse">Initializing Dojo...</div>;
                 }
                 if (!publicKey) {
                     return (
@@ -306,19 +329,19 @@
                             </p>
                             <div className="space-y-3 my-8 flex flex-col items-center text-gray-200">
                                 <div className="flex items-center p-2 rounded-lg">
-                                    <span className="text-xl mr-3 text-red-700">⛩</span>
+                                    <span className="text-xl mr-3 text-red-700 font-bold">⛩</span>
                                     <span>Hourly Teto Rewards</span>
                                 </div>
                                 <div className="flex items-center p-2 rounded-lg">
-                                    <span className="text-xl mr-3 text-red-700">⛩</span>
+                                    <span className="text-xl mr-3 text-red-700 font-bold">⛩</span>
                                     <span>Lottery Wheel Gambling</span>
                                 </div>
                                 <div className="flex items-center p-2 rounded-lg">
-                                    <span className="text-xl mr-3 text-red-700">⛩</span>
+                                    <span className="text-xl mr-3 text-red-700 font-bold">⛩</span>
                                     <span>Degen Duels</span>
                                 </div>
                             </div>
-                            <button onClick={handleConnectClick} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
+                            <button onClick={connectWallet} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">
                                 {icons.wallet}
                                 <span className="ml-2">Connect Wallet</span>
                             </button>
