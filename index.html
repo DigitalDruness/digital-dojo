@@ -392,11 +392,18 @@
             );
         }
 
-        // [FIXED] New initialization and rendering logic
+        // --- New initialization and rendering logic ---
         async function initializeAndRender() {
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
-
+            // [FIXED] Hardcoded the config to prevent deployment errors
+            const firebaseConfig = {
+                apiKey: "AIzaSyDEhTzJiImbtTNJdScLz6DxNWRAg7Rkm1A",
+                authDomain: "digital-dojo-482eb.firebaseapp.com",
+                projectId: "digital-dojo-482eb",
+                storageBucket: "digital-dojo-482eb.appspot.com",
+                messagingSenderId: "112511358197",
+                appId: "1:112511358197:web:cd1df35fa9543cafbe61bc"
+            };
+            
             if (!firebaseConfig.apiKey) {
                 console.error("Firebase config is missing or invalid.");
                 return;
@@ -412,14 +419,9 @@
                 auth = app.auth();
                 db = app.firestore();
 
-                let user;
-                if (initialAuthToken) {
-                    const userCredential = await auth.signInWithCustomToken(initialAuthToken);
-                    user = userCredential.user;
-                } else {
-                    const userCredential = await auth.signInAnonymously();
-                    user = userCredential.user;
-                }
+                // [FIXED] Simplified to only use anonymous sign-in
+                const userCredential = await auth.signInAnonymously();
+                const user = userCredential.user;
                 
                 // Only render the app AFTER Firebase is ready and the user is signed in
                 ReactDOM.render(<App auth={auth} db={db} appId={app.options.appId} user={user} />, document.getElementById('root'));
