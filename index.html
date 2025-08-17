@@ -15,6 +15,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-functions-compat.js"></script>
     
     <style>
         /* Basic body styling to match the app's dark theme */
@@ -28,15 +29,10 @@
 <body>
     <div id="root"></div>
 
-    <div id="message-box" style="display: none;"></div>
-
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- Helius API & NFT Collections ---
-        // IMPORTANT: See security recommendations below about hiding these keys.
-        const heliusApiKey = "6e2b3a8b-d410-46b1-9cc9-53d9dec76d02"; 
-        const heliusEndpoint = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+        // --- NFT Collections (API KEY IS NOW GONE!) ---
         const collectionMintAddresses = [
             "2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb",
             "DmRQEKrjRHrEVT8TNc7kWLjKbCv7RTn672LrgpnFagah",
@@ -152,38 +148,31 @@
                 }, 1000);
                 return () => clearInterval(interval);
             }, [lastClaimTimestamp, nftCount]);
-
+            
+            // --- THIS IS THE NEW SECURE FUNCTION ---
             const checkNFTCount = async (ownerPublicKey) => {
                 if (!ownerPublicKey) return 0;
+
                 try {
-                    const response = await fetch(heliusEndpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            jsonrpc: '2.0',
-                            id: 'my-id',
-                            method: 'getAssetsByOwner',
-                            params: { ownerAddress: ownerPublicKey.toString(), page: 1, limit: 1000 },
-                        }),
-                    });
-                    const { result } = await response.json();
+                    // Get a reference to the Cloud Function service
+                    const functions = firebase.functions();
                     
-                    if (result && result.items) {
-                        const verifiedNfts = result.items.filter(nft => {
-                            return nft.grouping && nft.grouping.some(group => 
-                                group.group_key === 'collection' && collectionMintAddresses.includes(group.group_value)
-                            );
-                        });
-                        return verifiedNfts.length;
-                    }
+                    // Get a reference to the specific cloud function we deployed
+                    const getNftCount = functions.httpsCallable('getNftCount');
+                    
+                    // Call the function with the wallet address
+                    const result = await getNftCount({ ownerAddress: ownerPublicKey.toString() });
+
+                    // The result.data object contains the data our function returned
+                    return result.data.nftCount;
+
                 } catch (error) {
-                    console.error("Failed to fetch NFTs from Helius:", error);
+                    console.error("Error calling cloud function:", error);
                     showMessage("Could not verify NFT count.");
+                    return 0;
                 }
-                return 0;
             };
 
-            // THIS IS THE CORRECTED FUNCTION
             const connectWallet = async (provider) => {
                 if (!provider) {
                     showMessage("Wallet provider not found! Make sure the extension is installed and enabled.");
@@ -197,24 +186,21 @@
                 try {
                     const response = await provider.connect();
 
-                    // --- THIS IS THE FIX ---
                     let connectedPublicKey;
                     if (response.publicKey) {
-                        // Handles Phantom's response structure
                         connectedPublicKey = response.publicKey;
                     } else {
-                        // Handles Solflare's response structure (where the response IS the public key)
                         connectedPublicKey = response;
                     }
                     
                     if (!connectedPublicKey) {
                         throw new Error("Could not retrieve public key from wallet.");
                     }
-                    // --- END OF FIX ---
 
                     setPublicKey(connectedPublicKey);
                     setWalletProvider(provider);
                     
+                    // This now calls our new, secure function
                     const count = await checkNFTCount(connectedPublicKey);
                     const userId = auth.currentUser.uid;
                     const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('tetoRewards').doc('userData');
@@ -228,10 +214,10 @@
 
                 } catch (error) {
                     console.error('Failed to connect wallet:', error);
-                    if (error.code === 4001) { // Standard code for "user rejected the request"
-                         showMessage('Wallet connection rejected.');
+                    if (error.code === 4001) { 
+                        showMessage('Wallet connection rejected.');
                     } else {
-                         showMessage(`Wallet connection failed: ${error.message}`);
+                        showMessage(`Wallet connection failed: ${error.message}`);
                     }
                 }
             };
@@ -241,7 +227,7 @@
                     try {
                         await walletProvider.disconnect();
                     } catch (error) {
-                         console.error('Failed to disconnect wallet:', error);
+                        console.error('Failed to disconnect wallet:', error);
                     }
                 }
                 
@@ -396,7 +382,7 @@
                     <div 
                         className="min-h-screen font-russo-one p-4 sm:p-6 md:p-8 flex items-center justify-center text-glow"
                         style={{
-                            backgroundImage: "url('dojo-bg.jpg.jpg')",
+                            backgroundImage: "url('dojo-bg.jpg')",
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
                             backgroundRepeat: 'no-repeat',
@@ -415,7 +401,7 @@
             );
         }
 
-        // --- New initialization and rendering logic ---
+        // --- Initialization and rendering logic ---
         async function initializeAndRender() {
             const firebaseConfig = {
                 apiKey: "AIzaSyDEhTzJiImbtTNJdScLz6DxNWRAg7Rkm1A",
