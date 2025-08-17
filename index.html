@@ -5,17 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Digital-Dojo</title>
     
-    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- React Libraries -->
     <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
     
-    <!-- Babel to transpile JSX in the browser -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Firebase v9 Compat Libraries -->
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
@@ -30,17 +26,15 @@
     </style>
 </head>
 <body>
-    <!-- The root element where the React app will be mounted -->
     <div id="root"></div>
 
-    <!-- This div is required by the App.jsx component for showing messages -->
     <div id="message-box" style="display: none;"></div>
 
-    <!-- The App.jsx code is now directly inside the HTML file -->
     <script type="text/babel">
         const { useState, useEffect } = React;
 
         // --- Helius API & NFT Collections ---
+        // IMPORTANT: See security recommendations below about hiding these keys.
         const heliusApiKey = "6e2b3a8b-d410-46b1-9cc9-53d9dec76d02"; 
         const heliusEndpoint = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
         const collectionMintAddresses = [
@@ -189,32 +183,56 @@
                 return 0;
             };
 
+            // THIS IS THE CORRECTED FUNCTION
             const connectWallet = async (provider) => {
                 if (!provider) {
-                    showMessage("Wallet provider not found!");
+                    showMessage("Wallet provider not found! Make sure the extension is installed and enabled.");
                     return;
                 }
                 if (!auth.currentUser) {
-                    showMessage("Authentication not ready.");
+                    showMessage("Authentication not ready. Please wait a moment and try again.");
                     return;
                 }
 
                 try {
                     const response = await provider.connect();
-                    const connectedPublicKey = response.publicKey;
+
+                    // --- THIS IS THE FIX ---
+                    let connectedPublicKey;
+                    if (response.publicKey) {
+                        // Handles Phantom's response structure
+                        connectedPublicKey = response.publicKey;
+                    } else {
+                        // Handles Solflare's response structure (where the response IS the public key)
+                        connectedPublicKey = response;
+                    }
+                    
+                    if (!connectedPublicKey) {
+                        throw new Error("Could not retrieve public key from wallet.");
+                    }
+                    // --- END OF FIX ---
+
                     setPublicKey(connectedPublicKey);
-                    setWalletProvider(provider); 
+                    setWalletProvider(provider);
+                    
                     const count = await checkNFTCount(connectedPublicKey);
                     const userId = auth.currentUser.uid;
                     const userDocRef = db.collection('artifacts').doc(appId).collection('users').doc(userId).collection('tetoRewards').doc('userData');
-                    await userDocRef.set({ 
+                    
+                    await userDocRef.set({
                         nftCount: count,
                         walletAddress: connectedPublicKey.toString()
                     }, { merge: true });
+                    
                     showMessage(`Wallet connected: ${truncatePublicKey(connectedPublicKey)}`);
+
                 } catch (error) {
                     console.error('Failed to connect wallet:', error);
-                    showMessage(`Wallet connection failed: ${error.message}`);
+                    if (error.code === 4001) { // Standard code for "user rejected the request"
+                         showMessage('Wallet connection rejected.');
+                    } else {
+                         showMessage(`Wallet connection failed: ${error.message}`);
+                    }
                 }
             };
 
@@ -399,7 +417,6 @@
 
         // --- New initialization and rendering logic ---
         async function initializeAndRender() {
-            // [FIXED] Hardcoded the config to prevent deployment errors
             const firebaseConfig = {
                 apiKey: "AIzaSyDEhTzJiImbtTNJdScLz6DxNWRAg7Rkm1A",
                 authDomain: "digital-dojo-482eb.firebaseapp.com",
@@ -424,11 +441,9 @@
                 auth = app.auth();
                 db = app.firestore();
 
-                // [FIXED] Simplified to only use anonymous sign-in
                 const userCredential = await auth.signInAnonymously();
                 const user = userCredential.user;
                 
-                // Only render the app AFTER Firebase is ready and the user is signed in
                 ReactDOM.render(<App auth={auth} db={db} appId={app.options.appId} user={user} />, document.getElementById('root'));
 
             } catch (error) {
