@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Digital-Dojo</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script src="/__/firebase/9.22.1/firebase-app-compat.js"></script>
+    <script src="/__/firebase/9.22.1/firebase-auth-compat.js"></script>
+    <script src="/__/firebase/9.22.1/firebase-firestore-compat.js"></script>
+    <script src="/__/firebase/9.22.1/firebase-functions-compat.js"></script>
+    <script src="/__/firebase/init.js"></script>
+    <style>
+        /* Basic body styling to match the app's dark theme */
+        body {
+            background-color: #111827; /* gray-900 */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // NOTE: All the React code from the previous file stays exactly the same.
+        // The only change is that we no longer need the 'firebaseConfig' object.
+
+        const { useState, useEffect } = React;
+
+        // --- Utility Functions ---
+        const showMessage = (message) => {
+            const messageElement = document.getElementById('message-box');
+            if (messageElement) {
+                messageElement.textContent = message;
+                messageElement.style.display = 'block';
+                messageElement.style.opacity = 1;
+                setTimeout(() => {
+                    messageElement.style.opacity = 0;
+                    setTimeout(() => {
+                        messageElement.style.display = 'none';
+                    }, 500);
+                }, 3000);
+            }
+        };
+
+        const formatTime = (ms) => {
+            if (ms <= 0) return "00:00:00";
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        };
+
+        const truncatePublicKey = (key) => {
+            if (!key) return '';
+            const str = key.toString();
+            return str.length > 8 ? `${str.substring(0, 4)}...${str.substring(str.length - 4)}` : str;
+        };
+
+        const icons = {
+            wallet: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>,
+            claim: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01M12 6v-1m0-1V4m0 2.01V5M12 20v-1m0-1v-1m0-1v-1m0-1v-1m0-1v-1"></path></svg>
+        };
+
+        // --- Main App Component ---
+        function App({ auth, db, user }) {
+            // State management
+            const [publicKey, setPublicKey] = useState(null);
+            const [walletProvider, setWalletProvider] = useState(null);
+            const [tetoBalance, setTetoBalance] = useState(0);
+            const [lastClaimTimestamp, setLastClaimTimestamp] = useState(null);
+            const [nftCount, setNftCount] = useState(0);
+            const [canClaim, setCanClaim] = useState(false);
+            const [isLoading, setIsLoading] = useState(true);
+            const [accumulatedRewards, setAccumulatedRewards] = useState(0);
+            const [timeUntilNextHour, setTimeUntilNextHour] = useState(0);
+
+            // Effect hook to listen for real-time user data from Firestore
+            useEffect(() => {
+                if (!db || !user) return;
+
+                const userDocRef = db.collection('users').doc(user.uid);
+
+                const unsubscribe = userDocRef.onSnapshot((doc) => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        setTetoBalance(data.tetoBalance || 0);
+                        setLastClaimTimestamp(data.lastClaimTimestamp?.toMillis() || Date.now());
+                        setNftCount(data.nftCount || 0);
+                        if (data.walletAddress) {
+                            setPublicKey({ toString: () => data.walletAddress });
+                        }
+                    } else {
+                        // Create the user document if it doesn't exist
+                        userDocRef.set({
+                            tetoBalance: 0,
+                            nftCount: 0,
+                            lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                            walletAddress: null
+                        });
+                    }
+                    setIsLoading(false);
+                }, (error) => {
+                    console.error("Firestore Snapshot Error:", error);
+                    showMessage("Error fetching user data.");
+                    setIsLoading(false);
+                });
+
+                // Cleanup subscription on component unmount
+                return () => unsubscribe();
+            }, [db, user]);
+
+            // Effect hook to calculate rewards every second
+            useEffect(() => {
+                if (!lastClaimTimestamp || nftCount <= 0) {
+                    setCanClaim(false);
+                    setAccumulatedRewards(0);
+                    return;
+                }
+
+                const interval = setInterval(() => {
+                    const now = Date.now();
+                    const elapsedMs = now - lastClaimTimestamp;
+                    const hoursElapsed = elapsedMs / (1000 * 60 * 60);
+                    const rewards = Math.floor(hoursElapsed * nftCount * 10); // 10 TETO per NFT per hour
+                    
+                    setAccumulatedRewards(rewards);
+                    setCanClaim(rewards > 0);
+
+                    // Calculate time until the top of the next hour for the countdown
+                    const msInHour = 3600000;
+                    const msSinceLastHour = elapsedMs % msInHour;
+                    setTimeUntilNextHour(msInHour - msSinceLastHour);
+                }, 1000);
+
+                return () => clearInterval(interval);
+            }, [lastClaimTimestamp, nftCount]);
+            
+            // Calls the secure backend function to verify NFT ownership
+            const checkNFTCount = async (walletAddress) => {
+                if (!walletAddress) return 0;
+
+                try {
+                    const getNftCount = firebase.functions().httpsCallable('getNftCount');
+                    const result = await getNftCount({ ownerAddress: walletAddress.toString() });
+                    return result.data.nftCount || 0;
+                } catch (error) {
+                    console.error("Error calling 'getNftCount' function:", error);
+                    showMessage(`Could not verify NFT count: ${error.message}`);
+                    return 0;
+                }
+            };
+
+            const connectWallet = async (provider) => {
+                if (!provider) {
+                    showMessage("Wallet not found. Please install Phantom or Solflare.");
+                    return;
+                }
+                if (!auth.currentUser) {
+                    showMessage("Authentication not ready. Please wait and try again.");
+                    return;
+                }
+
+                try {
+                    const response = await provider.connect();
+                    const connectedPublicKey = response.publicKey;
+                    
+                    if (!connectedPublicKey) {
+                        throw new Error("Could not retrieve public key from wallet.");
+                    }
+
+                    showMessage("Verifying holder status...");
+                    setPublicKey(connectedPublicKey);
+                    setWalletProvider(provider);
+                    
+                    const count = await checkNFTCount(connectedPublicKey);
+                    
+                    const userDocRef = db.collection('users').doc(auth.currentUser.uid);
+                    await userDocRef.set({
+                        nftCount: count,
+                        walletAddress: connectedPublicKey.toString()
+                    }, { merge: true });
+                    
+                    showMessage(`Wallet connected with ${count} NFTs!`);
+                } catch (error) {
+                    console.error('Failed to connect wallet:', error);
+                    showMessage(error.code === 4001 ? 'Wallet connection rejected.' : `Connection failed: ${error.message}`);
+                }
+            };
+
+            const disconnectWallet = async () => {
+                if (walletProvider && walletProvider.disconnect) {
+                    try {
+                        await walletProvider.disconnect();
+                    } catch (error) {
+                        console.error('Failed to disconnect wallet:', error);
+                    }
+                }
+                
+                setPublicKey(null);
+                setWalletProvider(null);
+
+                const userDocRef = db.collection('users').doc(auth.currentUser.uid);
+                await userDocRef.update({ walletAddress: null, nftCount: 0 });
+                
+                showMessage('Wallet disconnected.');
+            };
+
+            const claimAccruedReward = async () => {
+                if (!canClaim || accumulatedRewards <= 0) return;
+
+                try {
+                    const userDocRef = db.collection('users').doc(auth.currentUser.uid);
+                    await db.runTransaction(async (transaction) => {
+                        const doc = await transaction.get(userDocRef);
+                        if (!doc.exists) throw "User document does not exist!";
+                        const currentBalance = doc.data().tetoBalance || 0;
+                        const newBalance = currentBalance + accumulatedRewards;
+                        transaction.update(userDocRef, {
+                            tetoBalance: newBalance,
+                            lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    });
+
+                    showMessage(`Claimed ${accumulatedRewards} TETO!`);
+                    setAccumulatedRewards(0);
+                } catch (error) {
+                    console.error("Error claiming reward:", error);
+                    showMessage("Claim failed. Please try again.");
+                }
+            };
+
+            // Renders the main content based on wallet connection status
+            const renderContent = () => {
+                if (isLoading) {
+                    return <div className="text-center text-gray-400 animate-pulse">Initializing Dojo...</div>;
+                }
+                if (!publicKey) {
+                    return (
+                        <div className="text-center">
+                            <h2 className="text-2xl font-bold mb-4 text-red-700 tracking-wider">
+                                TRUE DEGENS WELCOME
+                            </h2>
+                            <p className="mb-8 text-gray-300 leading-relaxed">
+                                Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-700 font-bold">Teto</span> rewards every hour and test your luck on the <span className="text-red-700 font-bold">Wheel</span>!
+                            </p>
+                            <div className="space-y-3 my-8 flex flex-col items-center text-gray-200">
+                                <div className="flex items-center p-2 rounded-lg"><span className="text-xl mr-3 text-red-700 font-bold" style={{textShadow: '0 0 5px #b91c1c'}}>⛩</span><span>Hourly Teto Rewards</span></div>
+                                <div className="flex items-center p-2 rounded-lg"><span className="text-xl mr-3 text-red-700 font-bold" style={{textShadow: '0 0 5px #b91c1c'}}>⛩</span><span>Lottery Wheel Gambling</span></div>
+                                <div className="flex items-center p-2 rounded-lg"><span className="text-xl mr-3 text-red-700 font-bold" style={{textShadow: '0 0 5px #b91c1c'}}>⛩</span><span>Degen Duels</span></div>
+                            </div>
+                            <div className="flex space-x-4">
+                                <button onClick={() => connectWallet(window.solana)} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">{icons.wallet}<span className="ml-2">Phantom</span></button>
+                                <button onClick={() => connectWallet(window.solflare)} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">{icons.wallet}<span className="ml-2">Solflare</span></button>
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div>
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <p className="text-sm text-gray-400">Wallet Connected</p>
+                                <p className="font-mono text-lg">{truncatePublicKey(publicKey)}</p>
+                            </div>
+                            <button onClick={disconnectWallet} className="bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 shadow-md hover:shadow-red-700/50">Disconnect</button>
+                        </div>
+                        <div className="bg-gray-800/10 p-6 rounded-xl shadow-lg red-glow mb-6">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-4">Your TETO Balance</h3>
+                            <p className="text-4xl font-bold text-white">{tetoBalance.toLocaleString()}</p>
+                            <p className="text-yellow-400">TETO</p>
+                        </div>
+                        <div className="bg-gray-800/10 p-6 rounded-xl shadow-lg red-glow mb-6">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-2">TETO Rewards</h3>
+                            <div className="mb-4">
+                                <p className="font-bold text-gray-400">Holder Status</p>
+                                <p className={`font-semibold ${nftCount > 0 ? 'text-green-400' : 'text-gray-500'}`}>{nftCount > 0 ? 'True Degen' : 'No verifiable NFTs found in wallet.'}</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div><p className="font-bold text-gray-400">NFTs Held</p><p className="text-white text-xl font-semibold">{nftCount}</p></div>
+                                <div><p className="font-bold text-gray-400">Rewards per Hour</p><p className="text-white text-xl font-semibold">{nftCount * 10} TETO</p></div>
+                            </div>
+                            <div><p className="text-sm text-gray-400">Accumulated Rewards</p><p className="text-3xl font-bold text-green-400">{accumulatedRewards}</p></div>
+                            <button onClick={claimAccruedReward} disabled={!canClaim} className={`w-full mt-6 font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-300 shadow-lg ${canClaim ? 'bg-green-500 hover:bg-green-600 text-white cursor-pointer hover:shadow-green-500/50' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}>{icons.claim}<span className="ml-2">{canClaim ? `Claim ${accumulatedRewards} TETO` : 'Nothing to Claim'}</span></button>
+                            {nftCount > 0 && !canClaim && (<p className="text-center text-sm text-gray-400 mt-2">Next reward accrues in: {formatTime(timeUntilNextHour)}</p>)}
+                        </div>
+                    </div>
+                );
+            };
+            
+            return (
+                <>
+                    <style>{`@import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap'); .font-russo-one { font-family: 'Russo One', sans-serif; } .red-glow { border: 1px solid #b91c1c; box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c; } .text-glow { text-shadow: 0 0 8px rgba(255, 0, 0, 0.4); }`}</style>
+                    <div className="min-h-screen font-russo-one p-4 sm:p-6 md:p-8 flex items-center justify-center text-glow" style={{ backgroundImage: "url('dojo-bg.jpg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', color: '#fff' }}>
+                        <div className="w-full max-w-md mx-auto">
+                            <div id="message-box" className="hidden fixed top-5 right-5 bg-blue-500 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-opacity duration-500"></div>
+                            <main className="bg-gray-800/10 backdrop-blur-sm p-6 rounded-xl shadow-lg red-glow">{renderContent()}</main>
+                        </div>
+                    </div>
+                </>
+            );
+        }
+
+        // --- App Initialization ---
+        async function initializeAndRender() {
+            // The firebaseConfig object is now GONE.
+            // Firebase is initialized automatically by the /__/firebase/init.js script.
+            try {
+                const auth = firebase.auth();
+                const db = firebase.firestore();
+
+                const userCredential = await auth.signInAnonymously();
+                
+                ReactDOM.render(<App auth={auth} db={db} user={userCredential.user} />, document.getElementById('root'));
+            } catch (error) {
+                console.error("Critical Firebase Error:", error);
+                document.getElementById('root').innerHTML = `<div style="color: red; text-align: center; padding: 20px;">Failed to initialize. Please deploy to Firebase Hosting to test.</div>`;
+            }
+        }
+
+        initializeAndRender();
+    </script>
+</body>
+</html>
