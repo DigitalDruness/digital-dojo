@@ -1,1 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Digital-Dojo</title>
 
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React (Production Versions) with Subresource Integrity (SRI) -->
+    <script src="https://unpkg.com/react@17/umd/react.production.min.js" crossorigin="anonymous" xintegrity="sha384-x/2iL6BGrVY2Al0/LhJqrFYiBFfkgoD+3brvNwsYHeo3MClscmutuM/f832Xp2bV"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js" crossorigin="anonymous" xintegrity="sha384-kZt2aL7iA7lVIW3s0WpG6iCrnTh0I7Lse2Ia/eLgM2H/bA5i4S2a/T8S+2aP/A5x"></script>
+    
+    <!-- Babel for JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous" xintegrity="sha384-qgB/bbou/eCRgwPAftb3Y8q2pE1/1mjs/gOMR6dROH+3eA/lCx8Tj2d/iP23v/0o"></script>
+    
+    <!-- Firebase SDKs -->
+    <script src="/__/firebase/9.22.1/firebase-app-compat.js"></script>
+    <script src="/__/firebase/9.22.1/firebase-auth-compat.js"></script>
+    <script src="/__/firebase/9.22.1/firebase-firestore-compat.js"></script>
+    <script src="/__/firebase/9.22.1/firebase-functions-compat.js"></script>
+    <script src="/__/firebase/init.js"></script>
+
+    <style>
+        body {
+            background-color: #111827; /* gray-900 */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        // --- Utility Functions ---
+        const showMessage = (message, type = 'info') => {
+            const messageBox = document.getElementById('message-box');
+            if (!messageBox) return;
+
+            messageBox.textContent = message;
+            messageBox.classList.remove('bg-blue-500', 'bg-green-500', 'bg-red-500');
+            
+            if (type === 'success') messageBox.classList.add('bg-green-500');
+            else if (type === 'error') messageBox.classList.add('bg-red-500');
+            else messageBox.classList.add('bg-blue-500');
+
+            messageBox.style.display = 'block';
+            messageBox.style.opacity = 1;
+            setTimeout(() => {
+                messageBox.style.opacity = 0;
+                setTimeout(() => { messageBox.style.display = 'none'; }, 500);
+            }, 3000);
+        };
+
+        const formatTime = (ms) => {
+            if (ms <= 0) return "00:00:00";
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        };
+
+        const truncatePublicKey = (key) => {
+            if (!key) return '';
+            const str = key.toString();
+            return str.length > 8 ? `${str.substring(0, 4)}...${str.substring(str.length - 4)}` : str;
+        };
+
+        const icons = {
+            wallet: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>,
+            claim: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01M12 6v-1m0-1V4m0 2.01V5M12 20v-1m0-1v-1m0-1v-1m0-1v-1m0-1v-1"></path></svg>
+        };
+
+        // --- Main App Component ---
+        function App({ auth, db, functions, user }) {
+            const [publicKey, setPublicKey] = useState(null);
+            const [tetoBalance, setTetoBalance] = useState(0);
+            const [lastClaimTimestamp, setLastClaimTimestamp] = useState(null);
+            const [nftCount, setNftCount] = useState(0);
+            const [isLoading, setIsLoading] = useState(true);
+            const [isClaiming, setIsClaiming] = useState(false);
+            const [isConnecting, setIsConnecting] = useState(false);
+            const [estimatedRewards, setEstimatedRewards] = useState(0);
+            const [timeUntilNextHour, setTimeUntilNextHour] = useState(0);
+
+            useEffect(() => {
+                if (!db || !user) return;
+                const userDocRef = db.collection('users').doc(user.uid);
+                const unsubscribe = userDocRef.onSnapshot((doc) => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        setTetoBalance(data.tetoBalance || 0);
+                        setLastClaimTimestamp(data.lastClaimTimestamp?.toMillis ? data.lastClaimTimestamp.toMillis() : Date.now());
+                        setNftCount(data.nftCount || 0);
+                        setPublicKey(data.walletAddress || null);
+                    }
+                    setIsLoading(false);
+                }, (error) => {
+                    console.error("Firestore Snapshot Error:", error);
+                    showMessage("Error fetching user data.", 'error');
+                    setIsLoading(false);
+                });
+                return () => unsubscribe();
+            }, [db, user]);
+
+            useEffect(() => {
+                if (!lastClaimTimestamp || nftCount <= 0) {
+                    setEstimatedRewards(0);
+                    return;
+                }
+                const interval = setInterval(() => {
+                    const now = Date.now();
+                    const elapsedMs = now - lastClaimTimestamp;
+                    const hoursElapsed = elapsedMs / (1000 * 60 * 60);
+                    const rewards = Math.floor(hoursElapsed * nftCount * 10);
+                    setEstimatedRewards(rewards);
+
+                    const msInHour = 3600000;
+                    const msSinceLastHour = elapsedMs % msInHour;
+                    setTimeUntilNextHour(msInHour - msSinceLastHour);
+                }, 1000);
+                return () => clearInterval(interval);
+            }, [lastClaimTimestamp, nftCount]);
+
+            const connectWallet = useCallback(async (walletProviderName) => {
+                const provider = walletProviderName === 'phantom' ? window.solana : window.solflare;
+                if (!provider) {
+                    showMessage(`Please install the ${walletProviderName} wallet.`, 'error');
+                    return;
+                }
+                setIsConnecting(true);
+                try {
+                    const response = await provider.connect();
+                    const connectedPublicKey = response.publicKey.toString();
+
+                    showMessage("Verifying holder status...");
+                    
+                    // *** THIS IS THE CORRECT FUNCTION CALL ***
+                    const updateUserWallet = functions.httpsCallable('updateUserWallet');
+                    const result = await updateUserWallet({ walletAddress: connectedPublicKey });
+
+                    if (result.data.success) {
+                        showMessage(`Wallet connected with ${result.data.nftCount} NFTs!`, 'success');
+                    } else {
+                        throw new Error(result.data.error || "Failed to verify wallet.");
+                    }
+                } catch (error) {
+                    console.error('Failed to connect wallet:', error);
+                    const message = error.code === 4001 ? 'Wallet connection rejected.' : `Connection failed: ${error.message}`;
+                    showMessage(message, 'error');
+                } finally {
+                    setIsConnecting(false);
+                }
+            }, [functions]);
+
+            const disconnectWallet = useCallback(async () => {
+                try {
+                    const updateUserWallet = functions.httpsCallable('updateUserWallet');
+                    // Passing null/empty walletAddress is handled by the backend to disconnect
+                    await updateUserWallet({ walletAddress: null }); 
+                    setPublicKey(null);
+                    showMessage('Wallet disconnected.');
+                } catch (error) {
+                    console.error('Failed to disconnect wallet:', error);
+                    showMessage('Failed to disconnect. Please try again.', 'error');
+                }
+            }, [functions]);
+
+            const claimAccruedReward = useCallback(async () => {
+                if (estimatedRewards <= 0 || isClaiming) return;
+                setIsClaiming(true);
+                try {
+                    const claimRewardsFunc = functions.httpsCallable('claimRewards');
+                    const result = await claimRewardsFunc();
+
+                    if (result.data.success) {
+                        showMessage(`Claimed ${result.data.amountClaimed} TETO!`, 'success');
+                    } else {
+                        throw new Error(result.data.error || "Claim failed.");
+                    }
+                } catch (error) {
+                    console.error("Error claiming reward:", error);
+                    showMessage(`Claim failed: ${error.message}`, 'error');
+                } finally {
+                    setIsClaiming(false);
+                }
+            }, [functions, isClaiming, estimatedRewards]);
+
+            const renderContent = () => {
+                if (isLoading) {
+                    return <div className="text-center text-gray-400 animate-pulse">Initializing Dojo...</div>;
+                }
+                if (!publicKey) {
+                    return (
+                        <div className="text-center">
+                            <h2 className="text-2xl font-bold mb-4 text-red-700 tracking-wider">TRUE DEGENS WELCOME</h2>
+                            <p className="mb-8 text-gray-300 leading-relaxed">Connect your Solana wallet to verify your holder status and begin your training.</p>
+                            <div className="flex space-x-4">
+                                <button onClick={() => connectWallet('phantom')} disabled={isConnecting} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50 disabled:bg-gray-500 disabled:cursor-not-allowed">{icons.wallet}<span className="ml-2">{isConnecting ? 'Connecting...' : 'Phantom'}</span></button>
+                                <button onClick={() => connectWallet('solflare')} disabled={isConnecting} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50 disabled:bg-gray-500 disabled:cursor-not-allowed">{icons.wallet}<span className="ml-2">{isConnecting ? 'Connecting...' : 'Solflare'}</span></button>
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div>
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <p className="text-sm text-gray-400">Wallet Connected</p>
+                                <p className="font-mono text-lg">{truncatePublicKey(publicKey)}</p>
+                            </div>
+                            <button onClick={disconnectWallet} className="bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 shadow-md hover:shadow-red-700/50">Disconnect</button>
+                        </div>
+                        <div className="bg-gray-800/10 p-6 rounded-xl shadow-lg red-glow mb-6">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-4">Your TETO Balance</h3>
+                            <p className="text-4xl font-bold text-white">{tetoBalance.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-gray-800/10 p-6 rounded-xl shadow-lg red-glow mb-6">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-2">TETO Rewards</h3>
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div><p className="font-bold text-gray-400">NFTs Held</p><p className="text-white text-xl font-semibold">{nftCount}</p></div>
+                                <div><p className="font-bold text-gray-400">Rewards per Hour</p><p className="text-white text-xl font-semibold">{nftCount * 10} TETO</p></div>
+                            </div>
+                            <div><p className="text-sm text-gray-400">Estimated Accumulated Rewards</p><p className="text-3xl font-bold text-green-400">{estimatedRewards}</p></div>
+                            <button onClick={claimAccruedReward} disabled={estimatedRewards <= 0 || isClaiming} className={`w-full mt-6 font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-300 shadow-lg ${estimatedRewards > 0 ? 'bg-green-500 hover:bg-green-600 text-white cursor-pointer hover:shadow-green-500/50' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}>{icons.claim}<span className="ml-2">{isClaiming ? 'Claiming...' : (estimatedRewards > 0 ? `Claim Rewards` : 'Nothing to Claim')}</span></button>
+                            {nftCount > 0 && estimatedRewards <= 0 && (<p className="text-center text-sm text-gray-400 mt-2">Next reward accrues in: {formatTime(timeUntilNextHour)}</p>)}
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <>
+                    <style>{`@import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap'); .font-russo-one { font-family: 'Russo One', sans-serif; } .red-glow { border: 1px solid #b91c1c; box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c; } .text-glow { text-shadow: 0 0 8px rgba(255, 0, 0, 0.4); }`}</style>
+                    <div className="min-h-screen font-russo-one p-4 sm:p-6 md:p-8 flex items-center justify-center text-glow" style={{ backgroundImage: "url('dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}>
+                        <div className="w-full max-w-md mx-auto">
+                            <div id="message-box" className="hidden fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-opacity duration-500"></div>
+                            <main className="bg-gray-800/10 backdrop-blur-sm p-6 rounded-xl shadow-lg red-glow">{renderContent()}</main>
+                        </div>
+                    </div>
+                </>
+            );
+        }
+
+        // --- App Initialization ---
+        function initializeApp() {
+            try {
+                const auth = firebase.auth();
+                const db = firebase.firestore();
+                const functions = firebase.functions();
+                
+                auth.signInAnonymously().then(cred => {
+                    auth.onAuthStateChanged(user => {
+                        if (user) {
+                            ReactDOM.render(<App auth={auth} db={db} functions={functions} user={user} />, document.getElementById('root'));
+                        } else {
+                            ReactDOM.render(<div>Signing in...</div>, document.getElementById('root'));
+                        }
+                    });
+                }).catch(error => {
+                    console.error("Anonymous sign-in failed:", error);
+                    document.getElementById('root').innerHTML = `<div style="color: red; text-align: center; padding: 20px;">Could not sign in. Please check your Firebase Auth settings.</div>`;
+                });
+
+            } catch (error) {
+                console.error("Critical Firebase Error:", error);
+                document.getElementById('root').innerHTML = `<div style="color: red; text-align: center; padding: 20px;">Failed to initialize. Please deploy to Firebase Hosting to test.</div>`;
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof firebase === 'undefined') {
+                document.addEventListener('firebase-initialized', initializeApp);
+            } else {
+                initializeApp();
+            }
+        });
+
+    </script>
+</body>
+</html>
