@@ -15,12 +15,11 @@
     <!-- Babel for JSX compilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous" xintegrity="sha384-qgB/bbou/eCRgwPAftb3Y8q2pE1/1mjs/gOMR6dROH+3eA/lCx8Tj2d/iP23v/0o"></script>
     
-    <!-- Firebase SDKs -->
-    <script src="/__/firebase/9.22.1/firebase-app-compat.js"></script>
-    <script src="/__/firebase/9.22.1/firebase-auth-compat.js"></script>
-    <script src="/__/firebase/9.22.1/firebase-firestore-compat.js"></script>
-    <script src="/__/firebase/9.22.1/firebase-functions-compat.js"></script>
-    <script src="/__/firebase/init.js"></script>
+    <!-- Firebase SDKs from CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-functions-compat.js"></script>
 
     <style>
         body {
@@ -32,6 +31,21 @@
 </head>
 <body>
     <div id="root"></div>
+
+    <script>
+        // Your Firebase configuration object is now correctly placed here.
+        const firebaseConfig = {
+            apiKey: "AIzaSyDEhTzJiImbtTNJdScLz6DxNWRAg7Rkm1A",
+            authDomain: "digital-dojo-482eb.firebaseapp.com",
+            projectId: "digital-dojo-482eb",
+            storageBucket: "digital-dojo-482eb.appspot.com",
+            messagingSenderId: "112511358197",
+            appId: "1:112511358197:web:cd1df35fa9543cafbe61bc"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+    </script>
 
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
@@ -140,7 +154,6 @@
 
                     showMessage("Verifying holder status...");
                     
-                    // *** THIS IS THE CORRECT FUNCTION CALL ***
                     const updateUserWallet = functions.httpsCallable('updateUserWallet');
                     const result = await updateUserWallet({ walletAddress: connectedPublicKey });
 
@@ -161,7 +174,6 @@
             const disconnectWallet = useCallback(async () => {
                 try {
                     const updateUserWallet = functions.httpsCallable('updateUserWallet');
-                    // Passing null/empty walletAddress is handled by the backend to disconnect
                     await updateUserWallet({ walletAddress: null }); 
                     setPublicKey(null);
                     showMessage('Wallet disconnected.');
@@ -273,13 +285,7 @@
             }
         }
         
-        document.addEventListener('DOMContentLoaded', () => {
-            if (typeof firebase === 'undefined') {
-                document.addEventListener('firebase-initialized', initializeApp);
-            } else {
-                initializeApp();
-            }
-        });
+        document.addEventListener('DOMContentLoaded', initializeApp);
 
     </script>
 </body>
