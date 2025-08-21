@@ -42,24 +42,17 @@
             if (!messageBox) return;
 
             messageBox.textContent = message;
-            // Clear previous color classes
             messageBox.classList.remove('bg-blue-500', 'bg-green-500', 'bg-red-500');
             
-            if (type === 'success') {
-                messageBox.classList.add('bg-green-500');
-            } else if (type === 'error') {
-                messageBox.classList.add('bg-red-500');
-            } else {
-                messageBox.classList.add('bg-blue-500');
-            }
+            if (type === 'success') messageBox.classList.add('bg-green-500');
+            else if (type === 'error') messageBox.classList.add('bg-red-500');
+            else messageBox.classList.add('bg-blue-500');
 
             messageBox.style.display = 'block';
             messageBox.style.opacity = 1;
             setTimeout(() => {
                 messageBox.style.opacity = 0;
-                setTimeout(() => {
-                    messageBox.style.display = 'none';
-                }, 500);
+                setTimeout(() => { messageBox.style.display = 'none'; }, 500);
             }, 3000);
         };
 
@@ -92,12 +85,9 @@
             const [isLoading, setIsLoading] = useState(true);
             const [isClaiming, setIsClaiming] = useState(false);
             const [isConnecting, setIsConnecting] = useState(false);
-
-            // Client-side state for displaying estimated rewards
             const [estimatedRewards, setEstimatedRewards] = useState(0);
             const [timeUntilNextHour, setTimeUntilNextHour] = useState(0);
 
-            // Effect hook to listen for real-time user data from Firestore
             useEffect(() => {
                 if (!db || !user) return;
                 const userDocRef = db.collection('users').doc(user.uid);
@@ -105,7 +95,6 @@
                     if (doc.exists) {
                         const data = doc.data();
                         setTetoBalance(data.tetoBalance || 0);
-                        // Make sure to handle both server timestamps and already converted JS dates
                         setLastClaimTimestamp(data.lastClaimTimestamp?.toMillis ? data.lastClaimTimestamp.toMillis() : Date.now());
                         setNftCount(data.nftCount || 0);
                         setPublicKey(data.walletAddress || null);
@@ -119,7 +108,6 @@
                 return () => unsubscribe();
             }, [db, user]);
 
-            // Effect hook to calculate *estimated* rewards for display purposes only
             useEffect(() => {
                 if (!lastClaimTimestamp || nftCount <= 0) {
                     setEstimatedRewards(0);
@@ -152,7 +140,7 @@
 
                     showMessage("Verifying holder status...");
                     
-                    // Call the secure backend function to verify NFTs and update Firestore
+                    // *** THIS IS THE CORRECT FUNCTION CALL ***
                     const updateUserWallet = functions.httpsCallable('updateUserWallet');
                     const result = await updateUserWallet({ walletAddress: connectedPublicKey });
 
@@ -171,12 +159,11 @@
             }, [functions]);
 
             const disconnectWallet = useCallback(async () => {
-                // Disconnecting is a client-side action, but we update the backend
-                // to reflect this state change securely.
                 try {
                     const updateUserWallet = functions.httpsCallable('updateUserWallet');
-                    await updateUserWallet({ walletAddress: null }); // Pass null to disconnect
-                    setPublicKey(null); // Optimistically update UI
+                    // Passing null/empty walletAddress is handled by the backend to disconnect
+                    await updateUserWallet({ walletAddress: null }); 
+                    setPublicKey(null);
                     showMessage('Wallet disconnected.');
                 } catch (error) {
                     console.error('Failed to disconnect wallet:', error);
@@ -189,7 +176,7 @@
                 setIsClaiming(true);
                 try {
                     const claimRewardsFunc = functions.httpsCallable('claimRewards');
-                    const result = await claimRewardsFunc(); // No parameters needed
+                    const result = await claimRewardsFunc();
 
                     if (result.data.success) {
                         showMessage(`Claimed ${result.data.amountClaimed} TETO!`, 'success');
@@ -261,26 +248,23 @@
         }
 
         // --- App Initialization ---
-        async function initializeAndRender() {
+        function initializeApp() {
             try {
-                // This is a special script provided by Firebase Hosting.
-                // It initializes the firebase object for you.
-                // We just need to wait for it to be ready.
-                await new Promise(resolve => document.addEventListener('firebase-initialized', resolve));
-
                 const auth = firebase.auth();
                 const db = firebase.firestore();
                 const functions = firebase.functions();
                 
-                await auth.signInAnonymously();
-                
-                auth.onAuthStateChanged(user => {
-                    if (user) {
-                        ReactDOM.render(<App auth={auth} db={db} functions={functions} user={user} />, document.getElementById('root'));
-                    } else {
-                        // Handle user being signed out
-                        ReactDOM.render(<div>Signing in...</div>, document.getElementById('root'));
-                    }
+                auth.signInAnonymously().then(cred => {
+                    auth.onAuthStateChanged(user => {
+                        if (user) {
+                            ReactDOM.render(<App auth={auth} db={db} functions={functions} user={user} />, document.getElementById('root'));
+                        } else {
+                            ReactDOM.render(<div>Signing in...</div>, document.getElementById('root'));
+                        }
+                    });
+                }).catch(error => {
+                    console.error("Anonymous sign-in failed:", error);
+                    document.getElementById('root').innerHTML = `<div style="color: red; text-align: center; padding: 20px;">Could not sign in. Please check your Firebase Auth settings.</div>`;
                 });
 
             } catch (error) {
@@ -289,13 +273,13 @@
             }
         }
         
-        // The /__/firebase/init.js script dispatches a custom event when it's done.
-        // We listen for that event to safely start our app.
-        if (typeof firebase === 'undefined') {
-            document.addEventListener('firebase-initialized', initializeAndRender);
-        } else {
-            initializeAndRender();
-        }
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof firebase === 'undefined') {
+                document.addEventListener('firebase-initialized', initializeApp);
+            } else {
+                initializeApp();
+            }
+        });
 
     </script>
 </body>
