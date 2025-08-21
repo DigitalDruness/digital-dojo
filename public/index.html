@@ -4,20 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Digital-Dojo</title>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React (Production Versions) with Subresource Integrity (SRI) -->
+    <script src="https://unpkg.com/react@17/umd/react.production.min.js" crossorigin="anonymous" xintegrity="sha384-x/2iL6BGrVY2Al0/LhJqrFYiBFfkgoD+3brvNwsYHeo3MClscmutuM/f832Xp2bV"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js" crossorigin="anonymous" xintegrity="sha384-kZt2aL7iA7lVIW3s0WpG6iCrnTh0I7Lse2Ia/eLgM2H/bA5i4S2a/T8S+2aP/A5x"></script>
+    
+    <!-- Babel for JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous" xintegrity="sha384-qgB/bbou/eCRgwPAftb3Y8q2pE1/1mjs/gOMR6dROH+3eA/lCx8Tj2d/iP23v/0o"></script>
+    
+    <!-- Firebase SDKs -->
     <script src="/__/firebase/9.22.1/firebase-app-compat.js"></script>
     <script src="/__/firebase/9.22.1/firebase-auth-compat.js"></script>
     <script src="/__/firebase/9.22.1/firebase-firestore-compat.js"></script>
     <script src="/__/firebase/9.22.1/firebase-functions-compat.js"></script>
     <script src="/__/firebase/init.js"></script>
+
     <style>
-        /* Basic body styling to match the app's dark theme */
         body {
             background-color: #111827; /* gray-900 */
             -webkit-font-smoothing: antialiased;
@@ -29,25 +34,33 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // NOTE: All the React code from the previous file stays exactly the same.
-        // The only change is that we no longer need the 'firebaseConfig' object.
-
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback } = React;
 
         // --- Utility Functions ---
-        const showMessage = (message) => {
-            const messageElement = document.getElementById('message-box');
-            if (messageElement) {
-                messageElement.textContent = message;
-                messageElement.style.display = 'block';
-                messageElement.style.opacity = 1;
-                setTimeout(() => {
-                    messageElement.style.opacity = 0;
-                    setTimeout(() => {
-                        messageElement.style.display = 'none';
-                    }, 500);
-                }, 3000);
+        const showMessage = (message, type = 'info') => {
+            const messageBox = document.getElementById('message-box');
+            if (!messageBox) return;
+
+            messageBox.textContent = message;
+            // Clear previous color classes
+            messageBox.classList.remove('bg-blue-500', 'bg-green-500', 'bg-red-500');
+            
+            if (type === 'success') {
+                messageBox.classList.add('bg-green-500');
+            } else if (type === 'error') {
+                messageBox.classList.add('bg-red-500');
+            } else {
+                messageBox.classList.add('bg-blue-500');
             }
+
+            messageBox.style.display = 'block';
+            messageBox.style.opacity = 1;
+            setTimeout(() => {
+                messageBox.style.opacity = 0;
+                setTimeout(() => {
+                    messageBox.style.display = 'none';
+                }, 500);
+            }, 3000);
         };
 
         const formatTime = (ms) => {
@@ -71,174 +84,126 @@
         };
 
         // --- Main App Component ---
-        function App({ auth, db, user }) {
-            // State management
+        function App({ auth, db, functions, user }) {
             const [publicKey, setPublicKey] = useState(null);
-            const [walletProvider, setWalletProvider] = useState(null);
             const [tetoBalance, setTetoBalance] = useState(0);
             const [lastClaimTimestamp, setLastClaimTimestamp] = useState(null);
             const [nftCount, setNftCount] = useState(0);
-            const [canClaim, setCanClaim] = useState(false);
             const [isLoading, setIsLoading] = useState(true);
-            const [accumulatedRewards, setAccumulatedRewards] = useState(0);
+            const [isClaiming, setIsClaiming] = useState(false);
+            const [isConnecting, setIsConnecting] = useState(false);
+
+            // Client-side state for displaying estimated rewards
+            const [estimatedRewards, setEstimatedRewards] = useState(0);
             const [timeUntilNextHour, setTimeUntilNextHour] = useState(0);
 
             // Effect hook to listen for real-time user data from Firestore
             useEffect(() => {
                 if (!db || !user) return;
-
                 const userDocRef = db.collection('users').doc(user.uid);
-
                 const unsubscribe = userDocRef.onSnapshot((doc) => {
                     if (doc.exists) {
                         const data = doc.data();
                         setTetoBalance(data.tetoBalance || 0);
-                        setLastClaimTimestamp(data.lastClaimTimestamp?.toMillis() || Date.now());
+                        // Make sure to handle both server timestamps and already converted JS dates
+                        setLastClaimTimestamp(data.lastClaimTimestamp?.toMillis ? data.lastClaimTimestamp.toMillis() : Date.now());
                         setNftCount(data.nftCount || 0);
-                        if (data.walletAddress) {
-                            setPublicKey({ toString: () => data.walletAddress });
-                        }
-                    } else {
-                        // Create the user document if it doesn't exist
-                        userDocRef.set({
-                            tetoBalance: 0,
-                            nftCount: 0,
-                            lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                            walletAddress: null
-                        });
+                        setPublicKey(data.walletAddress || null);
                     }
                     setIsLoading(false);
                 }, (error) => {
                     console.error("Firestore Snapshot Error:", error);
-                    showMessage("Error fetching user data.");
+                    showMessage("Error fetching user data.", 'error');
                     setIsLoading(false);
                 });
-
-                // Cleanup subscription on component unmount
                 return () => unsubscribe();
             }, [db, user]);
 
-            // Effect hook to calculate rewards every second
+            // Effect hook to calculate *estimated* rewards for display purposes only
             useEffect(() => {
                 if (!lastClaimTimestamp || nftCount <= 0) {
-                    setCanClaim(false);
-                    setAccumulatedRewards(0);
+                    setEstimatedRewards(0);
                     return;
                 }
-
                 const interval = setInterval(() => {
                     const now = Date.now();
                     const elapsedMs = now - lastClaimTimestamp;
                     const hoursElapsed = elapsedMs / (1000 * 60 * 60);
-                    const rewards = Math.floor(hoursElapsed * nftCount * 10); // 10 TETO per NFT per hour
-                    
-                    setAccumulatedRewards(rewards);
-                    setCanClaim(rewards > 0);
+                    const rewards = Math.floor(hoursElapsed * nftCount * 10);
+                    setEstimatedRewards(rewards);
 
-                    // Calculate time until the top of the next hour for the countdown
                     const msInHour = 3600000;
                     const msSinceLastHour = elapsedMs % msInHour;
                     setTimeUntilNextHour(msInHour - msSinceLastHour);
                 }, 1000);
-
                 return () => clearInterval(interval);
             }, [lastClaimTimestamp, nftCount]);
-            
-            // Calls the secure backend function to verify NFT ownership
-            const checkNFTCount = async (walletAddress) => {
-                if (!walletAddress) return 0;
 
-                try {
-                    const getNftCount = firebase.functions().httpsCallable('getNftCount');
-                    const result = await getNftCount({ ownerAddress: walletAddress.toString() });
-                    return result.data.nftCount || 0;
-                } catch (error) {
-                    console.error("Error calling 'getNftCount' function:", error);
-                    showMessage(`Could not verify NFT count: ${error.message}`);
-                    return 0;
-                }
-            };
-
-            const connectWallet = async (provider) => {
+            const connectWallet = useCallback(async (walletProviderName) => {
+                const provider = walletProviderName === 'phantom' ? window.solana : window.solflare;
                 if (!provider) {
-                    showMessage("Wallet not found. Please install Phantom or Solflare.");
+                    showMessage(`Please install the ${walletProviderName} wallet.`, 'error');
                     return;
                 }
-                if (!auth.currentUser) {
-                    showMessage("Authentication not ready. Please wait and try again.");
-                    return;
-                }
-
+                setIsConnecting(true);
                 try {
                     const response = await provider.connect();
-                    const connectedPublicKey = response.publicKey;
-                    
-                    if (!connectedPublicKey) {
-                        throw new Error("Could not retrieve public key from wallet.");
-                    }
+                    const connectedPublicKey = response.publicKey.toString();
 
                     showMessage("Verifying holder status...");
-                    setPublicKey(connectedPublicKey);
-                    setWalletProvider(provider);
                     
-                    const count = await checkNFTCount(connectedPublicKey);
-                    
-                    const userDocRef = db.collection('users').doc(auth.currentUser.uid);
-                    await userDocRef.set({
-                        nftCount: count,
-                        walletAddress: connectedPublicKey.toString()
-                    }, { merge: true });
-                    
-                    showMessage(`Wallet connected with ${count} NFTs!`);
+                    // Call the secure backend function to verify NFTs and update Firestore
+                    const updateUserWallet = functions.httpsCallable('updateUserWallet');
+                    const result = await updateUserWallet({ walletAddress: connectedPublicKey });
+
+                    if (result.data.success) {
+                        showMessage(`Wallet connected with ${result.data.nftCount} NFTs!`, 'success');
+                    } else {
+                        throw new Error(result.data.error || "Failed to verify wallet.");
+                    }
                 } catch (error) {
                     console.error('Failed to connect wallet:', error);
-                    showMessage(error.code === 4001 ? 'Wallet connection rejected.' : `Connection failed: ${error.message}`);
+                    const message = error.code === 4001 ? 'Wallet connection rejected.' : `Connection failed: ${error.message}`;
+                    showMessage(message, 'error');
+                } finally {
+                    setIsConnecting(false);
                 }
-            };
+            }, [functions]);
 
-            const disconnectWallet = async () => {
-                if (walletProvider && walletProvider.disconnect) {
-                    try {
-                        await walletProvider.disconnect();
-                    } catch (error) {
-                        console.error('Failed to disconnect wallet:', error);
-                    }
-                }
-                
-                setPublicKey(null);
-                setWalletProvider(null);
-
-                const userDocRef = db.collection('users').doc(auth.currentUser.uid);
-                await userDocRef.update({ walletAddress: null, nftCount: 0 });
-                
-                showMessage('Wallet disconnected.');
-            };
-
-            const claimAccruedReward = async () => {
-                if (!canClaim || accumulatedRewards <= 0) return;
-
+            const disconnectWallet = useCallback(async () => {
+                // Disconnecting is a client-side action, but we update the backend
+                // to reflect this state change securely.
                 try {
-                    const userDocRef = db.collection('users').doc(auth.currentUser.uid);
-                    await db.runTransaction(async (transaction) => {
-                        const doc = await transaction.get(userDocRef);
-                        if (!doc.exists) throw "User document does not exist!";
-                        const currentBalance = doc.data().tetoBalance || 0;
-                        const newBalance = currentBalance + accumulatedRewards;
-                        transaction.update(userDocRef, {
-                            tetoBalance: newBalance,
-                            lastClaimTimestamp: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                    });
+                    const updateUserWallet = functions.httpsCallable('updateUserWallet');
+                    await updateUserWallet({ walletAddress: null }); // Pass null to disconnect
+                    setPublicKey(null); // Optimistically update UI
+                    showMessage('Wallet disconnected.');
+                } catch (error) {
+                    console.error('Failed to disconnect wallet:', error);
+                    showMessage('Failed to disconnect. Please try again.', 'error');
+                }
+            }, [functions]);
 
-                    showMessage(`Claimed ${accumulatedRewards} TETO!`);
-                    setAccumulatedRewards(0);
+            const claimAccruedReward = useCallback(async () => {
+                if (estimatedRewards <= 0 || isClaiming) return;
+                setIsClaiming(true);
+                try {
+                    const claimRewardsFunc = functions.httpsCallable('claimRewards');
+                    const result = await claimRewardsFunc(); // No parameters needed
+
+                    if (result.data.success) {
+                        showMessage(`Claimed ${result.data.amountClaimed} TETO!`, 'success');
+                    } else {
+                        throw new Error(result.data.error || "Claim failed.");
+                    }
                 } catch (error) {
                     console.error("Error claiming reward:", error);
-                    showMessage("Claim failed. Please try again.");
+                    showMessage(`Claim failed: ${error.message}`, 'error');
+                } finally {
+                    setIsClaiming(false);
                 }
-            };
+            }, [functions, isClaiming, estimatedRewards]);
 
-            // Renders the main content based on wallet connection status
             const renderContent = () => {
                 if (isLoading) {
                     return <div className="text-center text-gray-400 animate-pulse">Initializing Dojo...</div>;
@@ -246,20 +211,11 @@
                 if (!publicKey) {
                     return (
                         <div className="text-center">
-                            <h2 className="text-2xl font-bold mb-4 text-red-700 tracking-wider">
-                                TRUE DEGENS WELCOME
-                            </h2>
-                            <p className="mb-8 text-gray-300 leading-relaxed">
-                                Connect your Solana wallet to verify your holder status and begin your training. Earn <span className="text-red-700 font-bold">Teto</span> rewards every hour and test your luck on the <span className="text-red-700 font-bold">Wheel</span>!
-                            </p>
-                            <div className="space-y-3 my-8 flex flex-col items-center text-gray-200">
-                                <div className="flex items-center p-2 rounded-lg"><span className="text-xl mr-3 text-red-700 font-bold" style={{textShadow: '0 0 5px #b91c1c'}}>⛩</span><span>Hourly Teto Rewards</span></div>
-                                <div className="flex items-center p-2 rounded-lg"><span className="text-xl mr-3 text-red-700 font-bold" style={{textShadow: '0 0 5px #b91c1c'}}>⛩</span><span>Lottery Wheel Gambling</span></div>
-                                <div className="flex items-center p-2 rounded-lg"><span className="text-xl mr-3 text-red-700 font-bold" style={{textShadow: '0 0 5px #b91c1c'}}>⛩</span><span>Degen Duels</span></div>
-                            </div>
+                            <h2 className="text-2xl font-bold mb-4 text-red-700 tracking-wider">TRUE DEGENS WELCOME</h2>
+                            <p className="mb-8 text-gray-300 leading-relaxed">Connect your Solana wallet to verify your holder status and begin your training.</p>
                             <div className="flex space-x-4">
-                                <button onClick={() => connectWallet(window.solana)} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">{icons.wallet}<span className="ml-2">Phantom</span></button>
-                                <button onClick={() => connectWallet(window.solflare)} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50">{icons.wallet}<span className="ml-2">Solflare</span></button>
+                                <button onClick={() => connectWallet('phantom')} disabled={isConnecting} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50 disabled:bg-gray-500 disabled:cursor-not-allowed">{icons.wallet}<span className="ml-2">{isConnecting ? 'Connecting...' : 'Phantom'}</span></button>
+                                <button onClick={() => connectWallet('solflare')} disabled={isConnecting} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-300 shadow-lg hover:shadow-red-700/50 disabled:bg-gray-500 disabled:cursor-not-allowed">{icons.wallet}<span className="ml-2">{isConnecting ? 'Connecting...' : 'Solflare'}</span></button>
                             </div>
                         </div>
                     );
@@ -276,32 +232,27 @@
                         <div className="bg-gray-800/10 p-6 rounded-xl shadow-lg red-glow mb-6">
                             <h3 className="text-lg font-semibold text-gray-300 mb-4">Your TETO Balance</h3>
                             <p className="text-4xl font-bold text-white">{tetoBalance.toLocaleString()}</p>
-                            <p className="text-yellow-400">TETO</p>
                         </div>
                         <div className="bg-gray-800/10 p-6 rounded-xl shadow-lg red-glow mb-6">
                             <h3 className="text-lg font-semibold text-gray-300 mb-2">TETO Rewards</h3>
-                            <div className="mb-4">
-                                <p className="font-bold text-gray-400">Holder Status</p>
-                                <p className={`font-semibold ${nftCount > 0 ? 'text-green-400' : 'text-gray-500'}`}>{nftCount > 0 ? 'True Degen' : 'No verifiable NFTs found in wallet.'}</p>
-                            </div>
                             <div className="grid grid-cols-2 gap-4 mb-6">
                                 <div><p className="font-bold text-gray-400">NFTs Held</p><p className="text-white text-xl font-semibold">{nftCount}</p></div>
                                 <div><p className="font-bold text-gray-400">Rewards per Hour</p><p className="text-white text-xl font-semibold">{nftCount * 10} TETO</p></div>
                             </div>
-                            <div><p className="text-sm text-gray-400">Accumulated Rewards</p><p className="text-3xl font-bold text-green-400">{accumulatedRewards}</p></div>
-                            <button onClick={claimAccruedReward} disabled={!canClaim} className={`w-full mt-6 font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-300 shadow-lg ${canClaim ? 'bg-green-500 hover:bg-green-600 text-white cursor-pointer hover:shadow-green-500/50' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}>{icons.claim}<span className="ml-2">{canClaim ? `Claim ${accumulatedRewards} TETO` : 'Nothing to Claim'}</span></button>
-                            {nftCount > 0 && !canClaim && (<p className="text-center text-sm text-gray-400 mt-2">Next reward accrues in: {formatTime(timeUntilNextHour)}</p>)}
+                            <div><p className="text-sm text-gray-400">Estimated Accumulated Rewards</p><p className="text-3xl font-bold text-green-400">{estimatedRewards}</p></div>
+                            <button onClick={claimAccruedReward} disabled={estimatedRewards <= 0 || isClaiming} className={`w-full mt-6 font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-300 shadow-lg ${estimatedRewards > 0 ? 'bg-green-500 hover:bg-green-600 text-white cursor-pointer hover:shadow-green-500/50' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}>{icons.claim}<span className="ml-2">{isClaiming ? 'Claiming...' : (estimatedRewards > 0 ? `Claim Rewards` : 'Nothing to Claim')}</span></button>
+                            {nftCount > 0 && estimatedRewards <= 0 && (<p className="text-center text-sm text-gray-400 mt-2">Next reward accrues in: {formatTime(timeUntilNextHour)}</p>)}
                         </div>
                     </div>
                 );
             };
-            
+
             return (
                 <>
                     <style>{`@import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap'); .font-russo-one { font-family: 'Russo One', sans-serif; } .red-glow { border: 1px solid #b91c1c; box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c; } .text-glow { text-shadow: 0 0 8px rgba(255, 0, 0, 0.4); }`}</style>
-                    <div className="min-h-screen font-russo-one p-4 sm:p-6 md:p-8 flex items-center justify-center text-glow" style={{ backgroundImage: "url('dojo-bg.jpg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', color: '#fff' }}>
+                    <div className="min-h-screen font-russo-one p-4 sm:p-6 md:p-8 flex items-center justify-center text-glow" style={{ backgroundImage: "url('dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}>
                         <div className="w-full max-w-md mx-auto">
-                            <div id="message-box" className="hidden fixed top-5 right-5 bg-blue-500 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-opacity duration-500"></div>
+                            <div id="message-box" className="hidden fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-opacity duration-500"></div>
                             <main className="bg-gray-800/10 backdrop-blur-sm p-6 rounded-xl shadow-lg red-glow">{renderContent()}</main>
                         </div>
                     </div>
@@ -311,22 +262,41 @@
 
         // --- App Initialization ---
         async function initializeAndRender() {
-            // The firebaseConfig object is now GONE.
-            // Firebase is initialized automatically by the /__/firebase/init.js script.
             try {
+                // This is a special script provided by Firebase Hosting.
+                // It initializes the firebase object for you.
+                // We just need to wait for it to be ready.
+                await new Promise(resolve => document.addEventListener('firebase-initialized', resolve));
+
                 const auth = firebase.auth();
                 const db = firebase.firestore();
-
-                const userCredential = await auth.signInAnonymously();
+                const functions = firebase.functions();
                 
-                ReactDOM.render(<App auth={auth} db={db} user={userCredential.user} />, document.getElementById('root'));
+                await auth.signInAnonymously();
+                
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        ReactDOM.render(<App auth={auth} db={db} functions={functions} user={user} />, document.getElementById('root'));
+                    } else {
+                        // Handle user being signed out
+                        ReactDOM.render(<div>Signing in...</div>, document.getElementById('root'));
+                    }
+                });
+
             } catch (error) {
                 console.error("Critical Firebase Error:", error);
                 document.getElementById('root').innerHTML = `<div style="color: red; text-align: center; padding: 20px;">Failed to initialize. Please deploy to Firebase Hosting to test.</div>`;
             }
         }
+        
+        // The /__/firebase/init.js script dispatches a custom event when it's done.
+        // We listen for that event to safely start our app.
+        if (typeof firebase === 'undefined') {
+            document.addEventListener('firebase-initialized', initializeAndRender);
+        } else {
+            initializeAndRender();
+        }
 
-        initializeAndRender();
     </script>
 </body>
 </html>
