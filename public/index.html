@@ -7,14 +7,8 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- React (Production Versions) with UPDATED integrity hashes -->
-    <script src="https://unpkg.com/react@17/umd/react.production.min.js" crossorigin="anonymous" integrity="sha384-7Er69WnAl0+tY5MWEvnQzWHeDFjgHSnlQfDDeWUvv8qlRXtzaF/pNo18Q2aoZNiO"></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js" crossorigin="anonymous" integrity="sha384-vj2XpC1SOa8PHrb0YlBqKN7CQzJYO72jz4CkDQ+ePL1pwOV4+dn05rPrbLGUuvCv"></script>
+    <!-- All library scripts are now loaded via modern imports below -->
     
-    <!-- BS58 Library with UPDATED integrity hash -->
-    <script src="https://unpkg.com/bs58@5.0.0/bs58.bundle.js" crossorigin="anonymous" integrity="sha384-OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb"></script>
-    
-    <!-- Firebase SDKs from CDN -->
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
@@ -43,6 +37,7 @@
     <script type="module">
         import React, { useState, useEffect, useCallback } from "https://cdn.skypack.dev/react";
         import ReactDOM from "https://cdn.skypack.dev/react-dom";
+        import bs58 from "https://cdn.skypack.dev/bs58";
 
         const e = React.createElement;
 
