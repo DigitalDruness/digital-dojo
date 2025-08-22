@@ -9,6 +9,9 @@
     <script src="https://unpkg.com/react@17/umd/react.production.min.js" crossorigin="anonymous" xintegrity="sha384-x/2iL6BGrVY2Al0/LhJqrFYiBFfkgoD+3brvNwsYHeo3MClscmutuM/f832Xp2bV"></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js" crossorigin="anonymous" xintegrity="sha384-kZt2aL7iA7lVIW3s0WpG6iCrnTh0I7Lse2Ia/eLgM2H/bA5i4S2a/T8S+2aP/A5x"></script>
     
+    <!-- BS58 Library for signature encoding -->
+    <script src="https://unpkg.com/bs58@5.0.0/bs58.bundle.js" crossorigin="anonymous" xintegrity="sha384-CRj3yBbrsLS0iP2r5wT2b93ds2q7s2Hw2s2d/xW+yT+9f2d/xW+yT+9f2d/xW+yT+9f2d="></script>
+    
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
@@ -170,10 +173,13 @@
                     const message = challengeResult.data.message;
                     const encodedMessage = new TextEncoder().encode(message);
                     const signedMessage = await provider.signMessage(encodedMessage, "utf8");
+                    
+                    // Encode the signature to Base58 before sending
+                    const signatureB58 = bs58.encode(signedMessage.signature);
 
                     showMessage("Verifying signature...");
                     const verifyAuthSignature = functions.httpsCallable('verifyAuthSignature');
-                    const verifyResult = await verifyAuthSignature({ publicKey: pkString, signature: Array.from(signedMessage.signature) });
+                    const verifyResult = await verifyAuthSignature({ publicKey: pkString, signature: signatureB58 });
                     
                     const token = verifyResult.data.token;
                     await auth.signInWithCustomToken(token);
