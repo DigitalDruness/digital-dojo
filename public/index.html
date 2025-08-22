@@ -7,7 +7,8 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- All library scripts are now loaded via modern imports below -->
+    <!-- Tone.js for sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
     
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
@@ -16,7 +17,38 @@
 
     <style>
         body { background-color: #111827; }
-        .wheel-container { transition: transform 4s cubic-bezier(0.25, 0.1, 0.25, 1); }
+        .wheel-container { 
+            transition: transform 5s cubic-bezier(0.1, 0.7, 1.0, 1.0); 
+        }
+        
+        .red-glow {
+            border: 1px solid #b91c1c;
+            box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c;
+            animation: pulse-glow 2s infinite alternate;
+        }
+
+        @keyframes pulse-glow {
+            from {
+                box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c;
+            }
+            to {
+                box-shadow: 0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444;
+            }
+        }
+
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #f00;
+            opacity: 0;
+            animation: fall 3s ease-out forwards;
+        }
+
+        @keyframes fall {
+            0% { transform: translateY(-100px) rotateZ(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotateZ(720deg); opacity: 0; }
+        }
     </style>
 </head>
 <body>
@@ -72,12 +104,40 @@
         function LotteryWheel({ onClose, functions, tetoBalance }) {
             const [isSpinning, setIsSpinning] = useState(false);
             const [rotation, setRotation] = useState(0);
+            const [winningSegment, setWinningSegment] = useState(null);
+            const [showConfetti, setShowConfetti] = useState(false);
+
             const segments = [
-                { text: '2x', color: 'bg-green-500' }, { text: '0x', color: 'bg-red-700' },
-                { text: '3x', color: 'bg-yellow-500' }, { text: '0x', color: 'bg-red-700' },
-                { text: '2x', color: 'bg-green-500' }, { text: '0x', color: 'bg-red-700' },
+                { text: '2x', color: 'bg-green-500', value: 20 }, 
+                { text: '0x', color: 'bg-red-700', value: 0 },
+                { text: '3x', color: 'bg-yellow-500', value: 30 }, 
+                { text: '0x', color: 'bg-red-700', value: 0 },
+                { text: '2x', color: 'bg-green-500', value: 20 }, 
+                { text: '0x', color: 'bg-red-700', value: 0 },
             ];
             const segmentAngle = 360 / segments.length;
+
+            const playSound = (type, prize = 0) => {
+                if (window.Tone) {
+                    const synth = new Tone.Synth().toDestination();
+                    if (type === 'tick') {
+                        synth.triggerAttackRelease("C5", "8n");
+                    } else if (type === 'win') {
+                        const now = Tone.now();
+                        synth.triggerAttackRelease("C5", "8n", now);
+                        synth.triggerAttackRelease("E5", "8n", now + 0.2);
+                        synth.triggerAttackRelease("G5", "8n", now + 0.4);
+                        if (prize === 30) { // Jackpot sound
+                           synth.triggerAttackRelease("C6", "8n", now + 0.6);
+                        }
+                    } else if (type === 'lose') {
+                        const now = Tone.now();
+                        synth.triggerAttackRelease("G4", "8n", now);
+                        synth.triggerAttackRelease("E4", "8n", now + 0.2);
+                        synth.triggerAttackRelease("C4", "8n", now + 0.4);
+                    }
+                }
+            };
 
             const handleSpin = async () => {
                 if (isSpinning || tetoBalance < 10) {
@@ -85,6 +145,17 @@
                     return;
                 }
                 setIsSpinning(true);
+                setWinningSegment(null);
+                setShowConfetti(false);
+                await Tone.start();
+
+                // Sound effect for spinning
+                let tickCount = 0;
+                const tickInterval = setInterval(() => {
+                    playSound('tick');
+                    tickCount++;
+                    if (tickCount > 30) clearInterval(tickInterval);
+                }, 150);
                 
                 try {
                     const spinTheWheelFunc = functions.httpsCallable('spinTheWheel');
@@ -92,15 +163,23 @@
                     if (!result.data.success) throw new Error("Spin failed on server.");
 
                     const { prizeSegment, prize } = result.data;
-                    const targetAngle = (prizeSegment * segmentAngle) + (360 * 5) + (Math.random() * segmentAngle - (segmentAngle / 2));
+                    const randomOffset = Math.random() * (segmentAngle - 10) - (segmentAngle / 2 - 5);
+                    const targetAngle = (prizeSegment * segmentAngle) + (360 * 6) + randomOffset;
                     setRotation(rotation + targetAngle);
 
                     setTimeout(() => {
+                        clearInterval(tickInterval);
                         showMessage(prize > 0 ? `You won ${prize} TETO!` : 'Better luck next time!', prize > 0 ? 'success' : 'info');
+                        playSound(prize > 0 ? 'win' : 'lose', prize);
+                        setWinningSegment(prizeSegment);
+                        if (prize === 30) {
+                            setShowConfetti(true);
+                        }
                         setIsSpinning(false);
-                    }, 4000);
+                    }, 5000); // Corresponds to animation duration
 
                 } catch (error) {
+                    clearInterval(tickInterval);
                     console.error("Error spinning wheel:", error);
                     showMessage(error.message || "Spin failed.", 'error');
                     setIsSpinning(false);
@@ -113,8 +192,12 @@
                         e('div', { className: "absolute inset-0 flex items-center justify-center" },
                             e('div', { style: { transform: `rotate(${rotation}deg)` }, className: "wheel-container w-full h-full rounded-full border-8 border-yellow-400 shadow-lg" },
                                 segments.map((segment, i) => e('div', {
-                                    key: i, className: `absolute w-1/2 h-1/2 ${segment.color} origin-bottom-right flex items-center justify-start`,
-                                    style: { transform: `rotate(${i * segmentAngle}deg) skewX(${90 - segmentAngle}deg)` }
+                                    key: i, 
+                                    className: `absolute w-1/2 h-1/2 ${segment.color} origin-bottom-right flex items-center justify-start transition-all duration-500`,
+                                    style: { 
+                                        transform: `rotate(${i * segmentAngle}deg) skewX(${90 - segmentAngle}deg)`,
+                                        ...(winningSegment === i && { boxShadow: '0 0 20px 10px #fff700' })
+                                    }
                                 }, e('span', {
                                     className: "text-white text-2xl font-bold",
                                     style: { transform: `skewX(${-(90-segmentAngle)}deg) rotate(${segmentAngle/2}deg) translate(30%, -50%)` }
@@ -122,7 +205,16 @@
                             )
                         ),
                         e('div', { className: "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-gray-800 border-4 border-yellow-400" }),
-                        e('div', { className: "absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 w-0 h-0 border-l-8 border-r-8 border-b-16 border-l-transparent border-r-transparent border-b-yellow-400" })
+                        e('div', { className: "absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 w-0 h-0 border-l-8 border-r-8 border-b-16 border-l-transparent border-r-transparent border-b-yellow-400" }),
+                        showConfetti && Array.from({ length: 50 }).map((_, i) => e('div', {
+                            key: i,
+                            className: 'confetti',
+                            style: {
+                                left: `${Math.random() * 100}%`,
+                                backgroundColor: ['#f00', '#0f0', '#00f', '#ff0', '#0ff'][Math.floor(Math.random() * 5)],
+                                animationDelay: `${Math.random() * 2}s`
+                            }
+                        }))
                     ),
                     e('div', { className: "mt-8 text-center" },
                         e('button', { onClick: handleSpin, disabled: isSpinning || tetoBalance < 10, className: "bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-8 rounded-lg text-xl disabled:bg-gray-500" }, isSpinning ? 'Spinning...' : 'Spin for 10 TETO'),
@@ -238,7 +330,7 @@
             };
 
             return e(React.Fragment, null,
-                e('style', null, `@import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap'); .font-russo-one { font-family: 'Russo One', sans-serif; } .red-glow { border: 1px solid #b91c1c; box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c; } .text-glow { text-shadow: 0 0 8px rgba(255, 0, 0, 0.4); }`),
+                e('style', null, `@import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap'); .font-russo-one { font-family: 'Russo One', sans-serif; } .text-glow { text-shadow: 0 0 8px rgba(255, 0, 0, 0.4); }`),
                 e('div', { className: "min-h-screen font-russo-one p-4 flex items-center justify-center text-glow", style: { backgroundImage: "url('dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' } },
                     e('div', { className: "w-full max-w-md mx-auto" },
                         e('div', { id: "message-box", className: "hidden fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-50" }),
