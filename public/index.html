@@ -15,7 +15,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-functions-compat.js"></script>
 
     <style>
-        body { background-color: #111827; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        body { background-color: #111827; }
         .wheel-container { transition: transform 4s cubic-bezier(0.25, 0.1, 0.25, 1); }
     </style>
 </head>
@@ -56,15 +56,6 @@
             }, 3000);
         };
 
-        const formatTime = (ms) => {
-            if (ms <= 0) return "00:00:00";
-            const totalSeconds = Math.floor(ms / 1000);
-            const hours = Math.floor(totalSeconds / 3600);
-            const minutes = Math.floor((totalSeconds % 3600) / 60);
-            const seconds = totalSeconds % 60;
-            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        };
-
         const truncatePublicKey = (key) => {
             if (!key) return '';
             const str = key.toString();
@@ -72,24 +63,24 @@
         };
 
         const icons = {
-            wallet: e('svg', { className: "w-6 h-6", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", xmlns: "http://www.w3.org/2000/svg" }, e('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" })),
-            claim: e('svg', { className: "w-6 h-6", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", xmlns: "http://www.w3.org/2000/svg" }, e('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01M12 6v-1m0-1V4m0 2.01V5M12 20v-1m0-1v-1m0-1v-1m0-1v-1m0-1v-1" })),
-            spinner: e('svg', { className: "w-6 h-6", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", xmlns: "http://www.w3.org/2000/svg"}, e('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M12 6v6m0 0v6m0-6h6m-6 0H6" }))
+            wallet: e('svg', { className: "w-6 h-6", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, e('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" })),
+            claim: e('svg', { className: "w-6 h-6", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, e('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01M12 6v-1m0-1V4m0 2.01V5M12 20v-1m0-1v-1m0-1v-1m0-1v-1m0-1v-1" })),
+            spinner: e('svg', { className: "w-6 h-6", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24"}, e('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M12 6v6m0 0v6m0-6h6m-6 0H6" }))
         };
         
         function LotteryWheel({ onClose, functions, tetoBalance }) {
             const [isSpinning, setIsSpinning] = useState(false);
             const [rotation, setRotation] = useState(0);
             const segments = [
-                { text: '2x', color: 'bg-green-500', value: 2 }, { text: '0x', color: 'bg-red-700', value: 0 },
-                { text: '3x', color: 'bg-yellow-500', value: 3 }, { text: '0x', color: 'bg-red-700', value: 0 },
-                { text: '2x', color: 'bg-green-500', value: 2 }, { text: '0x', color: 'bg-red-700', value: 0 },
+                { text: '2x', color: 'bg-green-500' }, { text: '0x', color: 'bg-red-700' },
+                { text: '3x', color: 'bg-yellow-500' }, { text: '0x', color: 'bg-red-700' },
+                { text: '2x', color: 'bg-green-500' }, { text: '0x', color: 'bg-red-700' },
             ];
             const segmentAngle = 360 / segments.length;
 
             const handleSpin = async () => {
                 if (isSpinning || tetoBalance < 10) {
-                    showMessage(tetoBalance < 10 ? "Not enough TETO to spin." : "Already spinning!", 'error');
+                    showMessage(tetoBalance < 10 ? "Not enough TETO." : "Spin in progress.", 'error');
                     return;
                 }
                 setIsSpinning(true);
@@ -97,8 +88,9 @@
                 try {
                     const spinTheWheelFunc = functions.httpsCallable('spinTheWheel');
                     const result = await spinTheWheelFunc();
-                    const { prizeSegment, prize } = result.data;
+                    if (!result.data.success) throw new Error("Spin failed on server.");
 
+                    const { prizeSegment, prize } = result.data;
                     const targetAngle = (prizeSegment * segmentAngle) + (360 * 5) + (Math.random() * segmentAngle - (segmentAngle / 2));
                     setRotation(rotation + targetAngle);
 
@@ -108,8 +100,8 @@
                     }, 4000);
 
                 } catch (error) {
-                    console.error("Error spinning the wheel:", error);
-                    showMessage(error.message || "Spin failed. Please try again.", 'error');
+                    console.error("Error spinning wheel:", error);
+                    showMessage(error.message || "Spin failed.", 'error');
                     setIsSpinning(false);
                 }
             };
@@ -132,7 +124,7 @@
                         e('div', { className: "absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 w-0 h-0 border-l-8 border-r-8 border-b-16 border-l-transparent border-r-transparent border-b-yellow-400" })
                     ),
                     e('div', { className: "mt-8 text-center" },
-                        e('button', { onClick: handleSpin, disabled: isSpinning || tetoBalance < 10, className: "bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-8 rounded-lg text-xl transition-colors duration-300 disabled:bg-gray-500 disabled:cursor-not-allowed" }, isSpinning ? 'Spinning...' : 'Spin for 10 TETO'),
+                        e('button', { onClick: handleSpin, disabled: isSpinning || tetoBalance < 10, className: "bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-8 rounded-lg text-xl disabled:bg-gray-500" }, isSpinning ? 'Spinning...' : 'Spin for 10 TETO'),
                         e('button', { onClick: onClose, className: "mt-4 text-gray-300 hover:text-white" }, "Close")
                     )
                 )
@@ -140,26 +132,26 @@
         }
 
         function App({ auth, db, functions, user }) {
-            const [publicKey, setPublicKey] = useState(null);
+            const [publicKey, setPublicKey] = useState(user?.uid || null);
             const [tetoBalance, setTetoBalance] = useState(0);
-            const [lastClaimTimestamp, setLastClaimTimestamp] = useState(null);
             const [nftCount, setNftCount] = useState(0);
-            const [isLoading, setIsLoading] = useState(true);
+            const [isLoading, setIsLoading] = useState(!user);
             const [isClaiming, setIsClaiming] = useState(false);
             const [showWheel, setShowWheel] = useState(false);
-            const [estimatedRewards, setEstimatedRewards] = useState(0);
 
             useEffect(() => {
-                if (!db || !user) return;
+                if (!user) {
+                    setIsLoading(false);
+                    return;
+                };
                 const userDocRef = db.collection('users').doc(user.uid);
                 const unsubscribe = userDocRef.onSnapshot((doc) => {
                     if (doc.exists) {
                         const data = doc.data();
                         setTetoBalance(data.tetoBalance || 0);
-                        setLastClaimTimestamp(data.lastClaimTimestamp?.toMillis());
                         setNftCount(data.nftCount || 0);
-                        setPublicKey(data.walletAddress || null);
                     }
+                    setPublicKey(user.uid);
                     setIsLoading(false);
                 });
                 return () => unsubscribe();
@@ -169,24 +161,35 @@
                 const provider = walletProviderName === 'phantom' ? window.solana : window.solflare;
                 if (!provider) return showMessage(`Please install ${walletProviderName}.`, 'error');
                 try {
-                    const response = await provider.connect();
-                    const pk = response.publicKey.toString();
+                    const { publicKey } = await provider.connect();
+                    const pkString = publicKey.toString();
+
+                    showMessage("Please sign the message in your wallet.");
+                    const getAuthChallenge = functions.httpsCallable('getAuthChallenge');
+                    const challengeResult = await getAuthChallenge({ publicKey: pkString });
+                    const message = challengeResult.data.message;
+                    const encodedMessage = new TextEncoder().encode(message);
+                    const signedMessage = await provider.signMessage(encodedMessage, "utf8");
+
+                    showMessage("Verifying signature...");
+                    const verifyAuthSignature = functions.httpsCallable('verifyAuthSignature');
+                    const verifyResult = await verifyAuthSignature({ publicKey: pkString, signature: Array.from(signedMessage.signature) });
+                    
+                    const token = verifyResult.data.token;
+                    await auth.signInWithCustomToken(token);
+                    
                     showMessage("Verifying holder status...");
                     const updateUserWallet = functions.httpsCallable('updateUserWallet');
-                    const result = await updateUserWallet({ walletAddress: pk });
-                    if (result.data.success) {
-                        showMessage(`Wallet connected with ${result.data.nftCount} NFTs!`, 'success');
-                    } else { throw new Error(result.data.error || "Failed to verify wallet."); }
+                    await updateUserWallet();
+
                 } catch (err) { showMessage(err.message, 'error'); }
-            }, [functions]);
+            }, [auth, functions]);
 
             const disconnectWallet = useCallback(async () => {
-                try {
-                    const updateUserWallet = functions.httpsCallable('updateUserWallet');
-                    await updateUserWallet({ walletAddress: null });
-                    showMessage('Wallet disconnected.');
-                } catch (err) { showMessage('Failed to disconnect.', 'error'); }
-            }, [functions]);
+                await auth.signOut();
+                setPublicKey(null);
+                showMessage('Wallet disconnected.');
+            }, [auth]);
 
             const claimAccruedReward = useCallback(async () => {
                 setIsClaiming(true);
@@ -207,10 +210,10 @@
                 if (!publicKey) {
                     return e('div', { className: "text-center" },
                         e('h2', { className: "text-2xl font-bold mb-4 text-red-700 tracking-wider" }, "TRUE DEGENS WELCOME"),
-                        e('p', { className: "mb-8 text-gray-300 leading-relaxed" }, "Connect your Solana wallet to verify your holder status and begin your training."),
+                        e('p', { className: "mb-8 text-gray-300 leading-relaxed" }, "Connect your Solana wallet to prove ownership and begin your training."),
                         e('div', { className: "flex space-x-4" },
-                            e('button', { onClick: () => connectWallet('phantom'), className: "w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center" }, icons.wallet, e('span', { className: 'ml-2' }, 'Phantom')),
-                            e('button', { onClick: () => connectWallet('solflare'), className: "w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center" }, icons.wallet, e('span', { className: 'ml-2' }, 'Solflare'))
+                            e('button', { onClick: () => connectWallet('phantom'), className: "w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center" }, icons.wallet, e('span', { className: 'ml-2' }, 'Connect Phantom')),
+                            e('button', { onClick: () => connectWallet('solflare'), className: "w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center" }, icons.wallet, e('span', { className: 'ml-2' }, 'Connect Solflare'))
                         )
                     );
                 }
@@ -233,9 +236,9 @@
 
             return e(React.Fragment, null,
                 e('style', null, `@import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap'); .font-russo-one { font-family: 'Russo One', sans-serif; } .red-glow { border: 1px solid #b91c1c; box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c; } .text-glow { text-shadow: 0 0 8px rgba(255, 0, 0, 0.4); }`),
-                e('div', { className: "min-h-screen font-russo-one p-4 sm:p-6 md:p-8 flex items-center justify-center text-glow", style: { backgroundImage: "url('dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' } },
+                e('div', { className: "min-h-screen font-russo-one p-4 flex items-center justify-center text-glow", style: { backgroundImage: "url('dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' } },
                     e('div', { className: "w-full max-w-md mx-auto" },
-                        e('div', { id: "message-box", className: "hidden fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-opacity duration-500" }),
+                        e('div', { id: "message-box", className: "hidden fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-50" }),
                         e('main', { className: "bg-gray-800/10 backdrop-blur-sm p-6 rounded-xl shadow-lg red-glow" }, renderContent()),
                         showWheel && e(LotteryWheel, { onClose: () => setShowWheel(false), functions, tetoBalance })
                     )
@@ -249,12 +252,8 @@
                 const db = firebase.firestore();
                 const functions = firebase.functions();
                 
-                auth.signInAnonymously().then(() => {
-                    auth.onAuthStateChanged(user => {
-                        if (user) {
-                            ReactDOM.render(e(App, { auth, db, functions, user }), document.getElementById('root'));
-                        }
-                    });
+                auth.onAuthStateChanged(user => {
+                    ReactDOM.render(e(App, { auth, db, functions, user }), document.getElementById('root'));
                 });
             } catch (error) {
                 console.error("Critical Firebase Error:", error);
