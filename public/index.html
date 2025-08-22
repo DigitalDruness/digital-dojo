@@ -25,6 +25,9 @@
     <script src="https://unpkg.com/bs58@5.0.0/bs58.bundle.js"></script>
 
     <style>
+        /* @import rule moved to the top of the stylesheet */
+        @import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap');
+
         body { background-color: #111827; }
         .wheel-container { transition: transform 5s cubic-bezier(0.1, 0.7, 1.0, 1.0); }
         .red-glow {
@@ -45,8 +48,6 @@
             0% { transform: translateY(-100px) rotateZ(0deg); opacity: 1; }
             100% { transform: translateY(100vh) rotateZ(720deg); opacity: 0; }
         }
-        /* Ensure Russo One font is available */
-        @import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap');
         .font-russo-one { font-family: 'Russo One', sans-serif; }
         #loader { transition: opacity 0.5s ease-out; }
     </style>
