@@ -19,7 +19,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-functions-compat.js"></script>
 
-    <!-- Dynamic SDK and bs58 Scripts -->
+    <!-- Dynamic SDK Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/@dynamic-labs/sdk-react-core@1.0.0-alpha.2/dist/umd/sdk-react-core.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@dynamic-labs/solana@1.0.0-alpha.2/dist/umd/solana.umd.js"></script>
     <script src="https://unpkg.com/bs58@5.0.0/bs58.bundle.js"></script>
@@ -45,10 +45,16 @@
             0% { transform: translateY(-100px) rotateZ(0deg); opacity: 1; }
             100% { transform: translateY(100vh) rotateZ(720deg); opacity: 0; }
         }
+        #loader { transition: opacity 0.5s ease-out; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <!-- Loading Indicator -->
+    <div id="loader" class="min-h-screen flex items-center justify-center text-red-700 font-russo-one text-xl animate-pulse">
+        Initializing Dojo...
+    </div>
+    <!-- Main App Container (hidden initially) -->
+    <div id="root" style="display: none;"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useCallback, useRef } = React;
@@ -243,6 +249,15 @@
             }
             
             ReactDOM.render(<App />, document.getElementById('root'));
+            
+            // Fade out loader and fade in the app
+            const loader = document.getElementById('loader');
+            const root = document.getElementById('root');
+            loader.style.opacity = 0;
+            setTimeout(() => {
+                loader.style.display = 'none';
+                root.style.display = 'block';
+            }, 500);
         }
         
         document.addEventListener('DOMContentLoaded', () => {
