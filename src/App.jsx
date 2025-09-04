@@ -1,16 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DynamicContextProvider, DynamicWidget, useDynamicContext } from '@dynamic-labs/sdk-react-core';
 import { SolanaWalletConnectors } from '@dynamic-labs/solana';
 import bs58 from 'bs58';
-import { auth, db, functions } from './firebase'; // Using the centralized firebase export
-import { onAuthStateChanged } from 'firebase/auth';
+import { auth, db, functions } from './firebase';
+import { onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 
 // --- Helper Functions ---
-
 const showMessage = (message, type = 'info') => {
+  const existingBox = document.getElementById('message-box');
+  if (existingBox) {
+    document.body.removeChild(existingBox);
+  }
+  
   const messageBox = document.createElement('div');
+  messageBox.id = 'message-box';
   messageBox.textContent = message;
   messageBox.className = 'fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-opacity duration-500';
   if (type === 'success') messageBox.classList.add('bg-green-500');
@@ -21,7 +26,9 @@ const showMessage = (message, type = 'info') => {
   setTimeout(() => {
     messageBox.style.opacity = '0';
     setTimeout(() => {
-      document.body.removeChild(messageBox);
+      if (document.body.contains(messageBox)) {
+        document.body.removeChild(messageBox);
+      }
     }, 500);
   }, 3000);
 };
@@ -32,15 +39,14 @@ const truncatePublicKey = (key) => {
   return str.length > 8 ? `${str.substring(0, 4)}...${str.substring(str.length - 4)}` : str;
 };
 
-
 // --- Main Application Logic Component ---
-
 function AppContent() {
-  const { primaryWallet, handleLogOut } = useDynamicContext();
+  const { primaryWallet, events } = useDynamicContext();
   const [tetoBalance, setTetoBalance] = useState(0);
   const [firebaseUser, setFirebaseUser] = useState(auth.currentUser);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Effect to listen for Firebase auth state changes (e.g., on page load)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setFirebaseUser(user);
@@ -49,9 +55,12 @@ function AppContent() {
     return () => unsubscribe();
   }, []);
 
+  // Effect to handle wallet events from Dynamic SDK
   useEffect(() => {
-    const signInWithSolana = async () => {
-      if (primaryWallet && !firebaseUser) {
+    // This function handles the logic to sign into Firebase *after* a wallet is connected.
+    const handleWalletLink = async ({ primaryWallet }) => {
+      // Only proceed if we have a wallet but no Firebase session yet.
+      if (primaryWallet && !auth.currentUser) {
         setIsLoading(true);
         try {
           const signer = await primaryWallet.connector.getSigner();
@@ -71,7 +80,7 @@ function AppContent() {
           const verifyResult = await verifyAuthSignature({ publicKey: primaryWallet.address, signature: signatureB58 });
           
           const token = verifyResult.data.token;
-          await auth.signInWithCustomToken(token);
+          await signInWithCustomToken(auth, token);
           
           showMessage("Verifying holder status...");
           const updateUserWallet = httpsCallable(functions, 'updateUserWallet');
@@ -79,40 +88,52 @@ function AppContent() {
 
         } catch (err) {
           showMessage(err.message, 'error');
-          await handleLogOut();
         } finally {
           setIsLoading(false);
         }
-      } else if (!primaryWallet && firebaseUser) {
-        auth.signOut();
       }
     };
-    signInWithSolana();
-  }, [primaryWallet, firebaseUser, handleLogOut]);
 
+    // This function handles logging out of Firebase when the wallet is disconnected.
+    const handleLogout = () => {
+      signOut(auth);
+    };
+
+    // Attach the event listeners
+    events.on('linkSuccess', handleWalletLink);
+    events.on('logout', handleLogout);
+
+    // Cleanup function to remove listeners when the component unmounts
+    return () => {
+      events.off('linkSuccess', handleWalletLink);
+      events.off('logout', handleLogout);
+    };
+  }, [events]);
+
+  // Effect to listen for changes to the user's TETO balance in Firestore
   useEffect(() => {
     if (!firebaseUser) {
-        setTetoBalance(0);
-        return;
-    };
+      setTetoBalance(0);
+      return;
+    }
 
     const userDocRef = doc(db, 'users', firebaseUser.uid);
     const unsubscribe = onSnapshot(userDocRef, (doc) => {
       if (doc.exists()) {
         const data = doc.data();
         setTetoBalance(data.tetoBalance || 0);
+      } else {
+        setTetoBalance(0);
       }
     });
     return () => unsubscribe();
   }, [firebaseUser]);
 
-  if (isLoading) {
-    return <div className="text-center text-gray-400 animate-pulse">Initializing Dojo...</div>;
-  }
-
   return (
     <>
-      {!primaryWallet ? (
+      {isLoading ? (
+        <div className="text-center text-gray-400 animate-pulse">Initializing Dojo...</div>
+      ) : !primaryWallet ? (
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4 text-red-500 tracking-wider">TRUE DEGENS WELCOME</h2>
           <p className="mb-8 text-gray-300 leading-relaxed">Connect your Solana wallet to prove ownership and begin your training.</p>
@@ -131,35 +152,32 @@ function AppContent() {
             <h3 className="text-lg font-semibold text-gray-300 mb-4">Your TETO Balance</h3>
             <p className="text-4xl font-bold text-white">{tetoBalance.toLocaleString()}</p>
           </div>
-          {/* Add actions like claim/spin wheel here later */}
         </div>
       )}
     </>
   );
 }
 
-// --- Main App Wrapper (with Dynamic Provider and RPC Fix) ---
-
+// --- Main App Wrapper ---
 function App() {
   const settings = {
     environmentId: "a20a507f-545f-48e3-8e00-813025fe99da",
     walletConnectors: [SolanaWalletConnectors],
-
-    // --- THIS IS THE FIX ---
-    // This tells Dynamic how to connect to the Solana network using your
-    // secure environment variable from Vercel.
     chainConfigurations: [
       {
-        chainId: 'solana', // Identifies the Solana Mainnet chain
-        rpcUrl: import.meta.env.VITE_SOLANA_RPC_URL, // Safely loads your Helius URL
+        chainId: 'solana',
+        rpcUrl: import.meta.env.VITE_SOLANA_RPC_URL,
       }
     ],
-    // --- END OF FIX ---
   };
 
   return (
     <DynamicContextProvider settings={settings}>
-      <div className="min-h-screen p-4 flex items-center justify-center text-white">
+      {/* These classes fix the centering and background image issues */}
+      <div 
+        className="min-h-screen p-4 flex items-center justify-center text-white"
+        style={{ backgroundImage: "url('/dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
+      >
         <div className="w-full max-w-md mx-auto">
           <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
             <AppContent />
