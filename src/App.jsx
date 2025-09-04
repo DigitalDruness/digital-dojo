@@ -61,23 +61,25 @@ function AppContent() {
       if (primaryWallet && !auth.currentUser) {
         setIsLoading(true);
         try {
-          // No longer need a separate signer object
-          // const signer = await primaryWallet.connector.getSigner();
-          // if (!signer) throw new Error("Could not get signer from wallet.");
-          
           showMessage("Please sign the message to log in.");
           const getAuthChallenge = httpsCallable(functions, 'getAuthChallenge');
           const challengeResult = await getAuthChallenge({ publicKey: primaryWallet.address });
+          
+          // --- THE DEFINITIVE FIX ---
+          // We MUST validate that the backend function returned a valid message.
+          // If not, we stop here and show a clear error.
+          if (!challengeResult?.data?.message || typeof challengeResult.data.message !== 'string') {
+            console.error("Invalid challenge response from server:", challengeResult.data);
+            throw new Error("Failed to receive a valid login challenge from the server. Please try again.");
+          }
+          // --- END OF FIX ---
+
           const message = challengeResult.data.message;
           const encodedMessage = new TextEncoder().encode(message);
           
-          // --- THE FIX ---
-          // We call signMessage directly on the primaryWallet object.
-          // This is a more stable and direct method.
           const signatureBytes = await primaryWallet.signMessage(encodedMessage);
-          if (!signatureBytes) throw new Error("Signing failed or was rejected.");
+          if (!signatureBytes) throw new Error("Signing failed or was rejected by the wallet.");
           const signatureB58 = bs58.encode(signatureBytes);
-          // --- END OF FIX ---
 
           showMessage("Verifying signature...");
           const verifyAuthSignature = httpsCallable(functions, 'verifyAuthSignature');
@@ -172,7 +174,7 @@ function AppContent() {
 // --- Main App Wrapper ---
 function App() {
   const settings = {
-    environmentId: "a20a507f-545f-48e3-8e00-813025fe99da",
+    environmentId: "a20a507f-545f-4b5e-8e00-813025fe99da",
     walletConnectors: [SolanaWalletConnectors],
     chainConfigurations: [
       {
