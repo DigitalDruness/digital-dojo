@@ -163,7 +163,8 @@ function AppContent() {
   );
 }
 
-// --- Password Protection Component ---
+// --- Password Protection Component (Refactored) ---
+// This component no longer renders a <main> tag, just the form itself.
 function PasswordProtection({ onSuccess }) {
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState('');
@@ -181,30 +182,37 @@ function PasswordProtection({ onSuccess }) {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <h2 className="text-2xl font-bold text-center text-red-500 tracking-wider">ACCESS REQUIRED</h2>
-          <p className="text-center text-gray-300">Please enter the password to enter the Dojo.</p>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="bg-gray-800/50 border border-red-700 text-white rounded-lg p-3 focus:ring-2 focus:ring-red-500 focus:outline-none"
-            placeholder="Password"
-          />
-          <button
-            type="submit"
-            className="bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg transition-colors"
-          >
-            Enter
-          </button>
-          {error && <p className="text-red-400 text-center text-sm">{error}</p>}
-        </form>
-      </main>
-    </div>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <h2 className="text-2xl font-bold text-center text-red-500 tracking-wider">ACCESS REQUIRED</h2>
+      <p className="text-center text-gray-300">Please enter the password to enter the Dojo.</p>
+      <input
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        className="bg-gray-800/50 border border-red-700 text-white rounded-lg p-3 focus:ring-2 focus:ring-red-500 focus:outline-none"
+        placeholder="Password"
+      />
+      <button
+        type="submit"
+        className="bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+      >
+        Enter
+      </button>
+      {error && <p className="text-red-400 text-center text-sm">{error}</p>}
+    </form>
   );
 }
+
+// --- View to show after password, while SDK loads ---
+const AuthLoadingView = ({ sdkState }) => {
+  if (sdkState === 'loading') {
+    return <div className="text-center animate-pulse">Loading Authentication...</div>;
+  }
+  if (sdkState === 'error') {
+    return <div className="text-center text-red-400">Failed to connect to authentication service. Please check your browser settings (ad-blockers) and refresh.</div>;
+  }
+  return <AppContent />;
+};
 
 
 // --- Main App Wrapper ---
@@ -233,7 +241,9 @@ function App() {
   };
 
   return (
+    // The DynamicContextProvider MUST be the top-level wrapper for hooks to work.
     <DynamicContextProvider settings={settings}>
+      {/* This main div handles the full-screen background and centers everything */}
       <div className="relative min-h-screen w-full flex items-center justify-center p-4 text-white">
         
         <div 
@@ -241,17 +251,17 @@ function App() {
           style={{ backgroundImage: "url('/dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
         />
         
-        {!isAuthenticated ? (
-          <PasswordProtection onSuccess={() => setIsAuthenticated(true)} />
-        ) : (
-          <div className="w-full max-w-md mx-auto">
-            <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
-              {sdkState === 'loading' && <div className="text-center animate-pulse">Loading Authentication...</div>}
-              {sdkState === 'error' && <div className="text-center text-red-400">Failed to connect to authentication service. Please check your browser settings (ad-blockers) and refresh.</div>}
-              {sdkState === 'ready' && <AppContent />}
-            </main>
-          </div>
-        )}
+        {/* A single, stable container for the content card */}
+        <div className="w-full max-w-md mx-auto">
+          <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
+            {/* We decide what to show inside this stable structure */}
+            {!isAuthenticated ? (
+              <PasswordProtection onSuccess={() => setIsAuthenticated(true)} />
+            ) : (
+              <AuthLoadingView sdkState={sdkState} />
+            )}
+          </main>
+        </div>
       </div>
     </DynamicContextProvider>
   );
