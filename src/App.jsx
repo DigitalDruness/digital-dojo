@@ -55,20 +55,15 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    // --- THE FIX ---
-    // This guard clause prevents the error. It ensures the `events` object
-    // is ready before we try to attach listeners to it.
-    if (!events) {
-      return; 
-    }
-    // --- END OF FIX ---
+    if (!events) return; 
 
     const handleWalletLink = async ({ primaryWallet }) => {
       if (primaryWallet && !auth.currentUser) {
         setIsLoading(true);
         try {
-          const signer = await primaryWallet.connector.getSigner();
-          if (!signer) throw new Error("Could not get signer from wallet.");
+          // No longer need a separate signer object
+          // const signer = await primaryWallet.connector.getSigner();
+          // if (!signer) throw new Error("Could not get signer from wallet.");
           
           showMessage("Please sign the message to log in.");
           const getAuthChallenge = httpsCallable(functions, 'getAuthChallenge');
@@ -76,8 +71,13 @@ function AppContent() {
           const message = challengeResult.data.message;
           const encodedMessage = new TextEncoder().encode(message);
           
-          const signature = await signer.signMessage(encodedMessage);
-          const signatureB58 = bs58.encode(signature);
+          // --- THE FIX ---
+          // We call signMessage directly on the primaryWallet object.
+          // This is a more stable and direct method.
+          const signatureBytes = await primaryWallet.signMessage(encodedMessage);
+          if (!signatureBytes) throw new Error("Signing failed or was rejected.");
+          const signatureB58 = bs58.encode(signatureBytes);
+          // --- END OF FIX ---
 
           showMessage("Verifying signature...");
           const verifyAuthSignature = httpsCallable(functions, 'verifyAuthSignature');
@@ -91,7 +91,16 @@ function AppContent() {
           await updateUserWallet();
 
         } catch (err) {
-          showMessage(err.message, 'error');
+            let errorMessage = "An unknown error occurred.";
+            if (err.message) {
+                errorMessage = err.message;
+            } else if (err.details && err.details.message) {
+                errorMessage = err.details.message;
+            } else if (typeof err === 'string') {
+                errorMessage = err;
+            }
+            console.error("Full Authentication Error:", JSON.stringify(err, null, 2));
+            showMessage(errorMessage, 'error');
         } finally {
           setIsLoading(false);
         }
@@ -106,7 +115,6 @@ function AppContent() {
     events.on('logout', handleLogout);
 
     return () => {
-      // We also check here in the cleanup function just to be safe.
       if (events) {
         events.off('linkSuccess', handleWalletLink);
         events.off('logout', handleLogout);
