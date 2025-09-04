@@ -46,7 +46,6 @@ function AppContent() {
   const [firebaseUser, setFirebaseUser] = useState(auth.currentUser);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Effect to listen for Firebase auth state changes (e.g., on page load)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setFirebaseUser(user);
@@ -55,11 +54,16 @@ function AppContent() {
     return () => unsubscribe();
   }, []);
 
-  // Effect to handle wallet events from Dynamic SDK
   useEffect(() => {
-    // This function handles the logic to sign into Firebase *after* a wallet is connected.
+    // --- THE FIX ---
+    // This guard clause prevents the error. It ensures the `events` object
+    // is ready before we try to attach listeners to it.
+    if (!events) {
+      return; 
+    }
+    // --- END OF FIX ---
+
     const handleWalletLink = async ({ primaryWallet }) => {
-      // Only proceed if we have a wallet but no Firebase session yet.
       if (primaryWallet && !auth.currentUser) {
         setIsLoading(true);
         try {
@@ -94,23 +98,22 @@ function AppContent() {
       }
     };
 
-    // This function handles logging out of Firebase when the wallet is disconnected.
     const handleLogout = () => {
       signOut(auth);
     };
 
-    // Attach the event listeners
     events.on('linkSuccess', handleWalletLink);
     events.on('logout', handleLogout);
 
-    // Cleanup function to remove listeners when the component unmounts
     return () => {
-      events.off('linkSuccess', handleWalletLink);
-      events.off('logout', handleLogout);
+      // We also check here in the cleanup function just to be safe.
+      if (events) {
+        events.off('linkSuccess', handleWalletLink);
+        events.off('logout', handleLogout);
+      }
     };
   }, [events]);
 
-  // Effect to listen for changes to the user's TETO balance in Firestore
   useEffect(() => {
     if (!firebaseUser) {
       setTetoBalance(0);
@@ -173,7 +176,6 @@ function App() {
 
   return (
     <DynamicContextProvider settings={settings}>
-      {/* These classes fix the centering and background image issues */}
       <div 
         className="min-h-screen p-4 flex items-center justify-center text-white"
         style={{ backgroundImage: "url('/dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
