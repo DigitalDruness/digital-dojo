@@ -189,23 +189,10 @@ function PasswordProtection({ onSuccess }) {
 }
 
 // --- This component manages the view after the password is correct ---
-const AuthenticatedView = ({ sdkState }) => {
-  if (sdkState === 'loading') {
-    return <div className="text-center animate-pulse">Loading Authentication...</div>;
-  }
-  if (sdkState === 'error') {
-    return <div className="text-center text-red-400">Failed to connect to authentication service.</div>;
-  }
-  return <AppContent />;
-};
-
-
-// --- Main App Wrapper ---
-function App() {
+const AuthenticatedView = () => {
   const [dynamicSettings, setDynamicSettings] = React.useState(null);
   const [configError, setConfigError] = React.useState(null);
   const [sdkState, setSdkState] = React.useState('loading');
-  const [isPasswordCorrect, setIsPasswordCorrect] = React.useState(false);
 
   React.useEffect(() => {
     const fetchDynamicConfig = async () => {
@@ -238,23 +225,26 @@ function App() {
     fetchDynamicConfig();
   }, []);
 
-  // --- Main Render Logic ---
-  const renderContent = () => {
-    if (!isPasswordCorrect) {
-      return <PasswordProtection onSuccess={() => setIsPasswordCorrect(true)} />;
-    }
-    if (configError) {
-      return <div className="text-center text-red-400">{configError}</div>;
-    }
-    if (!dynamicSettings) {
-      return <div className="text-center animate-pulse">Loading Configuration...</div>;
-    }
-    return (
-      <DynamicContextProvider settings={dynamicSettings}>
-        <AuthenticatedView sdkState={sdkState} />
-      </DynamicContextProvider>
-    );
-  };
+  if (configError) {
+    return <div className="text-center text-red-400">{configError}</div>;
+  }
+
+  if (!dynamicSettings) {
+    return <div className="text-center animate-pulse">Loading Configuration...</div>;
+  }
+
+  return (
+    <DynamicContextProvider settings={dynamicSettings}>
+      {sdkState === 'loading' && <div className="text-center animate-pulse">Loading Authentication...</div>}
+      {sdkState === 'error' && <div className="text-center text-red-400">Failed to connect to authentication service.</div>}
+      {sdkState === 'ready' && <AppContent />}
+    </DynamicContextProvider>
+  );
+};
+
+// --- Main App Wrapper ---
+function App() {
+  const [isPasswordCorrect, setIsPasswordCorrect] = React.useState(false);
 
   return (
     <div className="relative min-h-screen w-full flex items-center justify-center p-4 text-white">
@@ -264,7 +254,11 @@ function App() {
       />
       <div className="w-full max-w-md mx-auto">
         <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
-          {renderContent()}
+          {!isPasswordCorrect ? (
+            <PasswordProtection onSuccess={() => setIsPasswordCorrect(true)} />
+          ) : (
+            <AuthenticatedView />
+          )}
         </main>
       </div>
     </div>

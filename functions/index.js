@@ -8,8 +8,10 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // --- Configuration ---
-const HELIUS_API_KEY = functions.config().helius.apikey;
+// Safely access config to prevent crashes if not set.
+const HELIUS_API_KEY = functions.config().helius ? functions.config().helius.apikey : undefined;
 const HELIUS_API_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+
 const WHITELISTED_COLLECTIONS = new Set([
   "2m9DupVeheZ5vfuXZxqV3KSQ7HnVDk2tG6ouH1ZnLwYb", "DmRQEKrjRHrEVT8TNc7kWLjKbCv7RTn672LrgpnFagah",
   "dgd6We3oS4M5LSVzT6Ep39wwVpjLC336tCpyPZkLAHx", "FdpDYUWYC8PekGttXz9kPb48CxVjpiEm5NaBb3X6zExy",
@@ -20,7 +22,10 @@ const SPIN_COST = 10;
 // --- Helper Functions ---
 const checkNftCountOnChain = async (ownerAddress) => {
     if (!ownerAddress) return 0;
-    if (!HELIUS_API_KEY) { console.error("Helius API key not configured."); return 0; }
+    if (!HELIUS_API_KEY) { 
+        console.error("Helius API key is not set in Firebase config. Run: firebase functions:config:set helius.apikey=YOUR_KEY");
+        return 0; 
+    }
     try {
         const response = await fetch(HELIUS_API_URL, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -53,21 +58,14 @@ const checkNftCountOnChain = async (ownerAddress) => {
 
 // --- Callable Functions ---
 
-/**
- * Securely provides the Dynamic Environment ID to the frontend.
- * This prevents the ID from being exposed in the public source code.
- * The ID itself is stored as a secret in Firebase Functions configuration.
- */
 exports.getDynamicConfig = functions.https.onCall((data, context) => {
-  // Make sure you have set this config variable using the Firebase CLI
   if (!functions.config().dynamic || !functions.config().dynamic.envid) {
-    console.error("Dynamic environment ID is not set in Firebase Functions config.");
+    console.error("CRITICAL ERROR: Dynamic environment ID is not set in Firebase Functions config. Run: firebase functions:config:set dynamic.envid=YOUR_ID");
     throw new functions.https.HttpsError(
       "failed-precondition",
       "The Dynamic environment ID is not configured on the server."
     );
   }
-
   return {
     environmentId: functions.config().dynamic.envid,
   };
@@ -80,12 +78,9 @@ exports.getAuthChallenge = functions.https.onCall(async (data, context) => {
     }
     const nonce = Math.random().toString(36).substring(2);
     const issuedAt = new Date().toISOString();
-    
     const message = `www.digital-dojo.xyz wants you to sign in with your Solana account:\n${publicKey}\n\nURI: https://www.digital-dojo.xyz\nVersion: 1\nChain ID: 1\nNonce: ${nonce}\nIssued At: ${issuedAt}`;
-    
     const challengeRef = db.collection('challenges').doc(publicKey);
     await challengeRef.set({ message, createdAt: admin.firestore.FieldValue.serverTimestamp() });
-    
     return { message };
 });
 
@@ -94,28 +89,21 @@ exports.verifyAuthSignature = functions.https.onCall(async (data, context) => {
     if (!publicKey || !signature) {
         throw new functions.https.HttpsError('invalid-argument', 'Public key and signature are required.');
     }
-
     const challengeRef = db.collection('challenges').doc(publicKey);
     const challengeDoc = await challengeRef.get();
-
     if (!challengeDoc.exists) {
         throw new functions.https.HttpsError('not-found', 'No challenge found or it has expired. Please try again.');
     }
-
     try {
         const { message } = challengeDoc.data();
         const messageBytes = new TextEncoder().encode(message);
         const publicKeyBytes = bs58.decode(publicKey);
         const signatureBytes = bs58.decode(signature);
-
         const isVerified = nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
-
         if (!isVerified) {
             throw new Error('Signature verification failed.');
         }
-
         await challengeRef.delete();
-
         const customToken = await admin.auth().createCustomToken(publicKey);
         return { token: customToken };
     } catch (error) {
@@ -125,22 +113,18 @@ exports.verifyAuthSignature = functions.https.onCall(async (data, context) => {
     }
 });
 
-
 exports.updateUserWallet = functions.https.onCall(async (data, context) => {
   if (!context.auth) { throw new functions.https.HttpsError("unauthenticated", "You must be logged in."); }
   const uid = context.auth.uid;
   const userDocRef = db.collection("users").doc(uid);
-  
   const nftCount = await checkNftCountOnChain(uid);
   const now = new Date();
   const startOfPreviousHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() - 1);
-
   await userDocRef.set({
     walletAddress: uid,
     nftCount: nftCount,
     lastClaimTimestamp: admin.firestore.Timestamp.fromDate(startOfPreviousHour),
   }, { merge: true });
-
   return { success: true, nftCount: nftCount };
 });
 
@@ -148,7 +132,6 @@ exports.claimRewards = functions.https.onCall(async (data, context) => {
   if (!context.auth) { throw new functions.https.HttpsError("unauthenticated", "You must be logged in."); }
   const uid = context.auth.uid;
   const userDocRef = db.collection("users").doc(uid);
-  
   return db.runTransaction(async (transaction) => {
     const userDoc = await transaction.get(userDocRef);
     if (!userDoc.exists) {
@@ -161,14 +144,11 @@ exports.claimRewards = functions.https.onCall(async (data, context) => {
         });
         throw new functions.https.HttpsError("aborted", "User profile created. Please try claiming again.");
     }
-    
     const { lastClaimTimestamp, tetoBalance = 0 } = userDoc.data();
     const now = new Date();
     const startOfCurrentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
     const hoursToClaim = Math.floor((startOfCurrentHour.getTime() - lastClaimTimestamp.toMillis()) / 3600000);
-
     if (hoursToClaim < 1) { throw new functions.https.HttpsError("failed-precondition", "Next claim not available yet."); }
-    
     const currentNftCount = await checkNftCountOnChain(uid);
     if (currentNftCount !== userDoc.data().nftCount) {
         transaction.update(userDocRef, { nftCount: currentNftCount });
@@ -177,10 +157,8 @@ exports.claimRewards = functions.https.onCall(async (data, context) => {
         transaction.update(userDocRef, { lastClaimTimestamp: startOfCurrentHour });
         return 0;
     }
-    
     const totalRewards = hoursToClaim * currentNftCount * 10;
     if (totalRewards <= 0) return 0;
-    
     transaction.update(userDocRef, {
         tetoBalance: tetoBalance + totalRewards,
         lastClaimTimestamp: startOfCurrentHour,
@@ -200,14 +178,11 @@ exports.spinTheWheel = functions.https.onCall(async (data, context) => {
   if (!context.auth) { throw new functions.https.HttpsError("unauthenticated", "You must be logged in to spin."); }
   const uid = context.auth.uid;
   const userDocRef = db.collection("users").doc(uid);
-
   return db.runTransaction(async (transaction) => {
     const userDoc = await transaction.get(userDocRef);
     if (!userDoc.exists) { throw new functions.https.HttpsError("not-found", "User data not found."); }
-    
     const currentBalance = userDoc.data().tetoBalance || 0;
     if (currentBalance < SPIN_COST) { throw new functions.https.HttpsError("failed-precondition", "Not enough TETO to spin."); }
-
     const segments = [
         { prize: 20, segmentIndex: 0 }, { prize: 0, segmentIndex: 1 }, { prize: 30, segmentIndex: 2 },
         { prize: 0, segmentIndex: 3 }, { prize: 20, segmentIndex: 4 }, { prize: 0, segmentIndex: 5 },
@@ -223,9 +198,7 @@ exports.spinTheWheel = functions.https.onCall(async (data, context) => {
     } else {
         result = segments.find(s => s.prize === 30);
     }
-    
     transaction.update(userDocRef, { tetoBalance: currentBalance - SPIN_COST + result.prize });
-    
     return { success: true, prizeSegment: result.segmentIndex, prize: result.prize };
   }).catch(error => {
     console.error("Error in spinTheWheel:", error);
