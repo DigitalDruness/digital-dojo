@@ -213,9 +213,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
 
   const settings = {
-    // --- THIS IS THE CORRECTED ID ---
     environmentId: "a20a507f-545f-48e3-8e00-813025fe99da",
-    // ---------------------------------
     walletConnectors: [SolanaWalletConnectors],
     chainConfigurations: [
       {
@@ -235,6 +233,7 @@ function App() {
   };
 
   return (
+    <DynamicContextProvider settings={settings}>
       <div className="relative min-h-screen w-full flex items-center justify-center p-4 text-white">
         
         <div 
@@ -245,17 +244,16 @@ function App() {
         {!isAuthenticated ? (
           <PasswordProtection onSuccess={() => setIsAuthenticated(true)} />
         ) : (
-          <DynamicContextProvider settings={settings}>
-            <div className="w-full max-w-md mx-auto">
-              <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
-                {sdkState === 'loading' && <div className="text-center animate-pulse">Loading Authentication...</div>}
-                {sdkState === 'error' && <div className="text-center text-red-400">Failed to connect to authentication service. Please check your browser settings (ad-blockers) and refresh.</div>}
-                {sdkState === 'ready' && <AppContent />}
-              </main>
-            </div>
-          </DynamicContextProvider>
+          <div className="w-full max-w-md mx-auto">
+            <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
+              {sdkState === 'loading' && <div className="text-center animate-pulse">Loading Authentication...</div>}
+              {sdkState === 'error' && <div className="text-center text-red-400">Failed to connect to authentication service. Please check your browser settings (ad-blockers) and refresh.</div>}
+              {sdkState === 'ready' && <AppContent />}
+            </main>
+          </div>
         )}
       </div>
+    </DynamicContextProvider>
   );
 }
 
