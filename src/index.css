@@ -1,3 +1,23 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+body {
+  background-color: #111827; /* Dark background */
+  font-family: 'Russo One', sans-serif; /* Apply the custom font */
+}
+
+.red-glow {
+  border: 1px solid #b91c1c;
+  box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c;
+  animation: pulse-glow 2s infinite alternate;
+}
+
+@keyframes pulse-glow {
+  from {
+    box-shadow: 0 0 5px #b91c1c, 0 0 10px #b91c1c, 0 0 15px #b91c1c;
+  }
+  to {
+    box-shadow: 0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444;
+  }
+}
