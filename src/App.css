@@ -1,0 +1,58 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
+import { getFirestore, collection, doc, onSnapshot } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { DynamicContextProvider, DynamicWidget, useDynamicContext } from '@dynamic-labs/sdk-react-core';
+import { SolanaWalletConnectors } from '@dynamic-labs/solana';
+import bs58 from 'bs58';
+import Tone from 'tone'; // Example if you use it
+
+// Safely import Firebase config from environment variables
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
+};
+
+// Initialize Firebase (using the new modular v9+ SDK)
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const functions = getFunctions(app);
+
+// --- Paste all your components here ---
+// function LotteryWheel(...) { ... }
+// function AppContent() { ... }
+
+// Your App component needs to be updated to use the modern Firebase SDK
+// For example, instead of firebase.auth(), you use the `auth` constant defined above.
+// Instead of firebase.functions(), you use the `functions` constant.
+// Instead of functions.httpsCallable('claimRewards'), you use httpsCallable(functions, 'claimRewards').
+
+// This is the main App component
+function App() {
+  const settings = {
+    environmentId: "a20a507f-545f-48e3-8e00-813025fe99da",
+    walletConnectors: [SolanaWalletConnectors],
+  };
+
+  return (
+    <DynamicContextProvider settings={settings}>
+      <div className="min-h-screen font-russo-one p-4 flex items-center justify-center text-glow" style={{ backgroundImage: "url('/dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        <div className="w-full max-w-md mx-auto">
+          <div id="message-box" className="hidden fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-50"></div>
+          <main className="bg-gray-800/10 backdrop-blur-sm p-6 rounded-xl shadow-lg red-glow">
+            {/* Your AppContent component would go here */}
+            {/* <AppContent /> */}
+          </main>
+        </div>
+      </div>
+    </DynamicContextProvider>
+  );
+}
+
+export default App;
