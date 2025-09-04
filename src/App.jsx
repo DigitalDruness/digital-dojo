@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { DynamicContextProvider, DynamicWidget, useDynamicContext } from '@dynamic-labs/sdk-react-core';
 import { SolanaWalletConnectors } from '@dynamic-labs/solana';
 import bs58 from 'bs58';
@@ -9,6 +9,7 @@ import { httpsCallable } from 'firebase/functions';
 
 // --- Helper Functions ---
 const showMessage = (message, type = 'info') => {
+  // ... (this function remains the same)
   const existingBox = document.getElementById('message-box');
   if (existingBox) {
     document.body.removeChild(existingBox);
@@ -34,6 +35,7 @@ const showMessage = (message, type = 'info') => {
 };
 
 const truncatePublicKey = (key) => {
+  // ... (this function remains the same)
   if (!key) return '';
   const str = key.toString();
   return str.length > 8 ? `${str.substring(0, 4)}...${str.substring(str.length - 4)}` : str;
@@ -41,12 +43,13 @@ const truncatePublicKey = (key) => {
 
 // --- Main Application Logic Component ---
 function AppContent() {
+  // ... (This component remains largely the same, no major changes needed here)
   const { primaryWallet, events } = useDynamicContext();
-  const [tetoBalance, setTetoBalance] = useState(0);
-  const [firebaseUser, setFirebaseUser] = useState(auth.currentUser);
-  const [isLoading, setIsLoading] = useState(true);
+  const [tetoBalance, setTetoBalance] = React.useState(0);
+  const [firebaseUser, setFirebaseUser] = React.useState(auth.currentUser);
+  const [isLoading, setIsLoading] = React.useState(true);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setFirebaseUser(user);
       setIsLoading(false);
@@ -54,7 +57,7 @@ function AppContent() {
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!events) return; 
 
     const handleWalletLink = async ({ primaryWallet }) => {
@@ -65,14 +68,10 @@ function AppContent() {
           const getAuthChallenge = httpsCallable(functions, 'getAuthChallenge');
           const challengeResult = await getAuthChallenge({ publicKey: primaryWallet.address });
           
-          // --- THE DEFINITIVE FIX ---
-          // We MUST validate that the backend function returned a valid message.
-          // If not, we stop here and show a clear error.
           if (!challengeResult?.data?.message || typeof challengeResult.data.message !== 'string') {
             console.error("Invalid challenge response from server:", challengeResult.data);
             throw new Error("Failed to receive a valid login challenge from the server. Please try again.");
           }
-          // --- END OF FIX ---
 
           const message = challengeResult.data.message;
           const encodedMessage = new TextEncoder().encode(message);
@@ -96,10 +95,6 @@ function AppContent() {
             let errorMessage = "An unknown error occurred.";
             if (err.message) {
                 errorMessage = err.message;
-            } else if (err.details && err.details.message) {
-                errorMessage = err.details.message;
-            } else if (typeof err === 'string') {
-                errorMessage = err;
             }
             console.error("Full Authentication Error:", JSON.stringify(err, null, 2));
             showMessage(errorMessage, 'error');
@@ -124,7 +119,7 @@ function AppContent() {
     };
   }, [events]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!firebaseUser) {
       setTetoBalance(0);
       return;
@@ -146,7 +141,7 @@ function AppContent() {
     <>
       {isLoading ? (
         <div className="text-center text-gray-400 animate-pulse">Initializing Dojo...</div>
-      ) : !primaryWallet ? (
+      ) : !firebaseUser ? (
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4 text-red-500 tracking-wider">TRUE DEGENS WELCOME</h2>
           <p className="mb-8 text-gray-300 leading-relaxed">Connect your Solana wallet to prove ownership and begin your training.</p>
@@ -157,7 +152,7 @@ function AppContent() {
           <div className="flex justify-between items-center mb-6">
             <div>
               <p className="text-sm text-gray-400">Wallet Connected</p>
-              <p className="font-mono text-lg">{truncatePublicKey(primaryWallet.address)}</p>
+              <p className="font-mono text-lg">{truncatePublicKey(firebaseUser.uid)}</p>
             </div>
             <DynamicWidget />
           </div>
@@ -173,6 +168,8 @@ function AppContent() {
 
 // --- Main App Wrapper ---
 function App() {
+  const [sdkState, setSdkState] = React.useState('loading');
+
   const settings = {
     environmentId: "a20a507f-545f-4b5e-8e00-813025fe99da",
     walletConnectors: [SolanaWalletConnectors],
@@ -182,17 +179,34 @@ function App() {
         rpcUrl: import.meta.env.VITE_SOLANA_RPC_URL,
       }
     ],
+    events: {
+      onSuccess: () => {
+        setSdkState('ready');
+      },
+      onError: (error) => {
+        console.error("Dynamic SDK initialization failed:", error);
+        setSdkState('error');
+      },
+    },
   };
 
   return (
     <DynamicContextProvider settings={settings}>
-      <div 
-        className="min-h-screen p-4 flex items-center justify-center text-white"
-        style={{ backgroundImage: "url('/dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
-      >
+      {/* This main container handles centering and positioning */}
+      <div className="relative min-h-screen w-full flex items-center justify-center p-4 text-white">
+        
+        {/* This div is ONLY for the background image. It fills the screen and sits behind everything. */}
+        <div 
+          className="absolute inset-0 w-full h-full -z-10"
+          style={{ backgroundImage: "url('/dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
+        />
+
+        {/* This container holds the actual welcome card content */}
         <div className="w-full max-w-md mx-auto">
           <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
-            <AppContent />
+            {sdkState === 'loading' && <div className="text-center animate-pulse">Loading Authentication...</div>}
+            {sdkState === 'error' && <div className="text-center text-red-400">Failed to connect to authentication service. Please disable ad-blockers or browser shields and refresh the page.</div>}
+            {sdkState === 'ready' && <AppContent />}
           </main>
         </div>
       </div>
