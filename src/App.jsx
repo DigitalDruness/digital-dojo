@@ -9,7 +9,6 @@ import { httpsCallable } from 'firebase/functions';
 
 // --- Helper Functions ---
 const showMessage = (message, type = 'info') => {
-  // ... (this function remains the same)
   const existingBox = document.getElementById('message-box');
   if (existingBox) {
     document.body.removeChild(existingBox);
@@ -35,7 +34,6 @@ const showMessage = (message, type = 'info') => {
 };
 
 const truncatePublicKey = (key) => {
-  // ... (this function remains the same)
   if (!key) return '';
   const str = key.toString();
   return str.length > 8 ? `${str.substring(0, 4)}...${str.substring(str.length - 4)}` : str;
@@ -43,7 +41,6 @@ const truncatePublicKey = (key) => {
 
 // --- Main Application Logic Component ---
 function AppContent() {
-  // ... (This component remains largely the same, no major changes needed here)
   const { primaryWallet, events } = useDynamicContext();
   const [tetoBalance, setTetoBalance] = React.useState(0);
   const [firebaseUser, setFirebaseUser] = React.useState(auth.currentUser);
@@ -166,12 +163,59 @@ function AppContent() {
   );
 }
 
+// --- Password Protection Component ---
+function PasswordProtection({ onSuccess }) {
+  const [password, setPassword] = React.useState('');
+  const [error, setError] = React.useState('');
+  
+  const CORRECT_PASSWORD = '#4760';
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (password === CORRECT_PASSWORD) {
+      setError('');
+      onSuccess();
+    } else {
+      setError('Incorrect password. Please try again.');
+    }
+  };
+
+  return (
+    <div className="w-full max-w-md mx-auto">
+      <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <h2 className="text-2xl font-bold text-center text-red-500 tracking-wider">ACCESS REQUIRED</h2>
+          <p className="text-center text-gray-300">Please enter the password to enter the Dojo.</p>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="bg-gray-800/50 border border-red-700 text-white rounded-lg p-3 focus:ring-2 focus:ring-red-500 focus:outline-none"
+            placeholder="Password"
+          />
+          <button
+            type="submit"
+            className="bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+          >
+            Enter
+          </button>
+          {error && <p className="text-red-400 text-center text-sm">{error}</p>}
+        </form>
+      </main>
+    </div>
+  );
+}
+
+
 // --- Main App Wrapper ---
 function App() {
   const [sdkState, setSdkState] = React.useState('loading');
+  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
 
   const settings = {
-    environmentId: "a20a507f-545f-4b5e-8e00-813025fe99da",
+    // --- THIS IS THE CORRECTED ID ---
+    environmentId: "a20a507f-545f-48e3-8e00-813025fe99da",
+    // ---------------------------------
     walletConnectors: [SolanaWalletConnectors],
     chainConfigurations: [
       {
@@ -191,26 +235,27 @@ function App() {
   };
 
   return (
-    <DynamicContextProvider settings={settings}>
-      {/* This main container handles centering and positioning */}
       <div className="relative min-h-screen w-full flex items-center justify-center p-4 text-white">
         
-        {/* This div is ONLY for the background image. It fills the screen and sits behind everything. */}
         <div 
           className="absolute inset-0 w-full h-full -z-10"
           style={{ backgroundImage: "url('/dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
         />
-
-        {/* This container holds the actual welcome card content */}
-        <div className="w-full max-w-md mx-auto">
-          <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
-            {sdkState === 'loading' && <div className="text-center animate-pulse">Loading Authentication...</div>}
-            {sdkState === 'error' && <div className="text-center text-red-400">Failed to connect to authentication service. Please disable ad-blockers or browser shields and refresh the page.</div>}
-            {sdkState === 'ready' && <AppContent />}
-          </main>
-        </div>
+        
+        {!isAuthenticated ? (
+          <PasswordProtection onSuccess={() => setIsAuthenticated(true)} />
+        ) : (
+          <DynamicContextProvider settings={settings}>
+            <div className="w-full max-w-md mx-auto">
+              <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
+                {sdkState === 'loading' && <div className="text-center animate-pulse">Loading Authentication...</div>}
+                {sdkState === 'error' && <div className="text-center text-red-400">Failed to connect to authentication service. Please check your browser settings (ad-blockers) and refresh.</div>}
+                {sdkState === 'ready' && <AppContent />}
+              </main>
+            </div>
+          </DynamicContextProvider>
+        )}
       </div>
-    </DynamicContextProvider>
   );
 }
 
