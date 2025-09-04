@@ -39,7 +39,7 @@ const truncatePublicKey = (key) => {
   return str.length > 8 ? `${str.substring(0, 4)}...${str.substring(str.length - 4)}` : str;
 };
 
-// --- Main Application Logic Component ---
+// --- Main Application Logic (After login) ---
 function AppContent() {
   const { primaryWallet, events } = useDynamicContext();
   const [tetoBalance, setTetoBalance] = React.useState(0);
@@ -66,15 +66,14 @@ function AppContent() {
           const challengeResult = await getAuthChallenge({ publicKey: primaryWallet.address });
           
           if (!challengeResult?.data?.message || typeof challengeResult.data.message !== 'string') {
-            console.error("Invalid challenge response from server:", challengeResult.data);
-            throw new Error("Failed to receive a valid login challenge from the server. Please try again.");
+            throw new Error("Failed to get login challenge from server.");
           }
 
           const message = challengeResult.data.message;
           const encodedMessage = new TextEncoder().encode(message);
           
           const signatureBytes = await primaryWallet.signMessage(encodedMessage);
-          if (!signatureBytes) throw new Error("Signing failed or was rejected by the wallet.");
+          if (!signatureBytes) throw new Error("Signing failed or was rejected.");
           const signatureB58 = bs58.encode(signatureBytes);
 
           showMessage("Verifying signature...");
@@ -84,16 +83,13 @@ function AppContent() {
           const token = verifyResult.data.token;
           await signInWithCustomToken(auth, token);
           
-          showMessage("Verifying holder status...");
+          showMessage("Updating user wallet...");
           const updateUserWallet = httpsCallable(functions, 'updateUserWallet');
           await updateUserWallet();
 
         } catch (err) {
-            let errorMessage = "An unknown error occurred.";
-            if (err.message) {
-                errorMessage = err.message;
-            }
-            console.error("Full Authentication Error:", JSON.stringify(err, null, 2));
+            const errorMessage = err.message || "An unknown error occurred.";
+            console.error("Authentication Error:", err);
             showMessage(errorMessage, 'error');
         } finally {
           setIsLoading(false);
@@ -121,15 +117,9 @@ function AppContent() {
       setTetoBalance(0);
       return;
     }
-
     const userDocRef = doc(db, 'users', firebaseUser.uid);
     const unsubscribe = onSnapshot(userDocRef, (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
-        setTetoBalance(data.tetoBalance || 0);
-      } else {
-        setTetoBalance(0);
-      }
+      setTetoBalance(doc.exists() ? doc.data().tetoBalance || 0 : 0);
     });
     return () => unsubscribe();
   }, [firebaseUser]);
@@ -141,7 +131,7 @@ function AppContent() {
       ) : !firebaseUser ? (
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4 text-red-500 tracking-wider">TRUE DEGENS WELCOME</h2>
-          <p className="mb-8 text-gray-300 leading-relaxed">Connect your Solana wallet to prove ownership and begin your training.</p>
+          <p className="mb-8 text-gray-300 leading-relaxed">Connect your wallet to begin.</p>
           <DynamicWidget />
         </div>
       ) : (
@@ -163,12 +153,10 @@ function AppContent() {
   );
 }
 
-// --- Password Protection Component (Refactored) ---
-// This component no longer renders a <main> tag, just the form itself.
+// --- Password Protection Component ---
 function PasswordProtection({ onSuccess }) {
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState('');
-  
   const CORRECT_PASSWORD = '#4760';
 
   const handleSubmit = (e) => {
@@ -177,14 +165,14 @@ function PasswordProtection({ onSuccess }) {
       setError('');
       onSuccess();
     } else {
-      setError('Incorrect password. Please try again.');
+      setError('Incorrect password.');
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold text-center text-red-500 tracking-wider">ACCESS REQUIRED</h2>
-      <p className="text-center text-gray-300">Please enter the password to enter the Dojo.</p>
+      <p className="text-center text-gray-300">Enter the password to access the Dojo.</p>
       <input
         type="password"
         value={password}
@@ -192,10 +180,7 @@ function PasswordProtection({ onSuccess }) {
         className="bg-gray-800/50 border border-red-700 text-white rounded-lg p-3 focus:ring-2 focus:ring-red-500 focus:outline-none"
         placeholder="Password"
       />
-      <button
-        type="submit"
-        className="bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg transition-colors"
-      >
+      <button type="submit" className="bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg transition-colors">
         Enter
       </button>
       {error && <p className="text-red-400 text-center text-sm">{error}</p>}
@@ -203,13 +188,13 @@ function PasswordProtection({ onSuccess }) {
   );
 }
 
-// --- View to show after password, while SDK loads ---
-const AuthLoadingView = ({ sdkState }) => {
+// --- This component manages the view after the password is correct ---
+const AuthenticatedView = ({ sdkState }) => {
   if (sdkState === 'loading') {
     return <div className="text-center animate-pulse">Loading Authentication...</div>;
   }
   if (sdkState === 'error') {
-    return <div className="text-center text-red-400">Failed to connect to authentication service. Please check your browser settings (ad-blockers) and refresh.</div>;
+    return <div className="text-center text-red-400">Failed to connect to authentication service.</div>;
   }
   return <AppContent />;
 };
@@ -217,53 +202,72 @@ const AuthLoadingView = ({ sdkState }) => {
 
 // --- Main App Wrapper ---
 function App() {
+  const [dynamicSettings, setDynamicSettings] = React.useState(null);
+  const [configError, setConfigError] = React.useState(null);
   const [sdkState, setSdkState] = React.useState('loading');
-  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+  const [isPasswordCorrect, setIsPasswordCorrect] = React.useState(false);
 
-  const settings = {
-    environmentId: "a20a507f-545f-48e3-8e00-813025fe99da",
-    walletConnectors: [SolanaWalletConnectors],
-    chainConfigurations: [
-      {
-        chainId: 'solana',
-        rpcUrl: import.meta.env.VITE_SOLANA_RPC_URL,
+  React.useEffect(() => {
+    const fetchDynamicConfig = async () => {
+      try {
+        const getDynamicConfig = httpsCallable(functions, 'getDynamicConfig');
+        const result = await getDynamicConfig();
+        if (!result?.data?.environmentId) throw new Error("Invalid config from server.");
+
+        const settings = {
+          environmentId: result.data.environmentId,
+          walletConnectors: [SolanaWalletConnectors],
+          chainConfigurations: [{
+            chainId: 'solana',
+            rpcUrl: import.meta.env.VITE_SOLANA_RPC_URL,
+          }],
+          events: {
+            onSuccess: () => setSdkState('ready'),
+            onError: (error) => {
+              console.error("Dynamic SDK Error:", error);
+              setSdkState('error');
+            },
+          },
+        };
+        setDynamicSettings(settings);
+      } catch (error) {
+        console.error("Could not fetch Dynamic Config:", error);
+        setConfigError("Could not load app configuration.");
       }
-    ],
-    events: {
-      onSuccess: () => {
-        setSdkState('ready');
-      },
-      onError: (error) => {
-        console.error("Dynamic SDK initialization failed:", error);
-        setSdkState('error');
-      },
-    },
+    };
+    fetchDynamicConfig();
+  }, []);
+
+  // --- Main Render Logic ---
+  const renderContent = () => {
+    if (!isPasswordCorrect) {
+      return <PasswordProtection onSuccess={() => setIsPasswordCorrect(true)} />;
+    }
+    if (configError) {
+      return <div className="text-center text-red-400">{configError}</div>;
+    }
+    if (!dynamicSettings) {
+      return <div className="text-center animate-pulse">Loading Configuration...</div>;
+    }
+    return (
+      <DynamicContextProvider settings={dynamicSettings}>
+        <AuthenticatedView sdkState={sdkState} />
+      </DynamicContextProvider>
+    );
   };
 
   return (
-    // The DynamicContextProvider MUST be the top-level wrapper for hooks to work.
-    <DynamicContextProvider settings={settings}>
-      {/* This main div handles the full-screen background and centers everything */}
-      <div className="relative min-h-screen w-full flex items-center justify-center p-4 text-white">
-        
-        <div 
-          className="absolute inset-0 w-full h-full -z-10"
-          style={{ backgroundImage: "url('/dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
-        />
-        
-        {/* A single, stable container for the content card */}
-        <div className="w-full max-w-md mx-auto">
-          <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
-            {/* We decide what to show inside this stable structure */}
-            {!isAuthenticated ? (
-              <PasswordProtection onSuccess={() => setIsAuthenticated(true)} />
-            ) : (
-              <AuthLoadingView sdkState={sdkState} />
-            )}
-          </main>
-        </div>
+    <div className="relative min-h-screen w-full flex items-center justify-center p-4 text-white">
+      <div 
+        className="absolute inset-0 w-full h-full -z-10"
+        style={{ backgroundImage: "url('/dojo-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
+      />
+      <div className="w-full max-w-md mx-auto">
+        <main className="bg-gray-900/50 backdrop-blur-md p-6 rounded-xl shadow-lg red-glow">
+          {renderContent()}
+        </main>
       </div>
-    </DynamicContextProvider>
+    </div>
   );
 }
 
