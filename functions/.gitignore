@@ -1,2 +1,4 @@
 node_modules/
 *.local
+# Ignore Firebase Functions environment files
+functions/.env.*

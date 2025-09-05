@@ -14,15 +14,16 @@
   },
   "main": "index.js",
   "dependencies": {
+    "bs58": "^5.0.0",
     "firebase-admin": "^11.5.0",
     "firebase-functions": "^3.24.1",
     "tweetnacl": "^1.0.3",
-    "bs58": "^5.0.0"
+    "node-fetch": "^2.7.0"
   },
   "devDependencies": {
     "eslint": "^8.15.0",
+    "eslint-config-google": "^0.14.0",
     "eslint-plugin-promise": "^6.0.0"
   },
   "private": true
 }
-

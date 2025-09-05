@@ -4,16 +4,21 @@ module.exports = {
     node: true,
   },
   parserOptions: {
-    "ecmaVersion": 2018,
+    ecmaVersion: 2020, // Updated to support optional chaining
   },
   extends: [
     "eslint:recommended",
     "google",
+    "plugin:promise/recommended",
   ],
   rules: {
     "no-restricted-globals": ["error", "name", "length"],
-    "prefer-arrow-callback": "error",
-    "quotes": ["error", "double", {"allowTemplateLiterals": true}],
+    "prefer-arrow-callback": "warn",
+    "quotes": ["error", "double", { allowTemplateLiterals: true }],
+    "semi": ["error", "always"],
+    "no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+    "comma-dangle": ["error", "always-multiline"], // Enforce trailing commas
+    "object-curly-spacing": ["error", "never"], // No spaces inside curly braces
   },
   overrides: [
     {

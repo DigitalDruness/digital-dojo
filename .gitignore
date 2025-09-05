@@ -55,3 +55,6 @@ yarn-error.log*
 *configstore*
 .firebase/
 firebase-debug.log
+
+# Ignore Firebase Functions environment files
+functions/.env.*
