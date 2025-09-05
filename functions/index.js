@@ -62,17 +62,24 @@ const checkNftCountOnChain = async (ownerAddress) => {
 };
 
 exports.getDynamicConfig = functions.https.onCall((data, context) => {
-  const envId = functions.config().dynamic.envid;
-  if (!envId) {
-    console.error("CRITICAL ERROR: DYNAMIC_ENVID is not set in the server environment.");
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      "The Dynamic environment ID is not configured on the server."
-    );
+  try {
+    const envId = functions.config().dynamic.envid;
+    if (!envId) {
+      console.error("CRITICAL ERROR: DYNAMIC_ENVID is not set in the server environment.");
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "The Dynamic environment ID is not configured on the server."
+      );
+    }
+    console.log("getDynamicConfig: Successfully retrieved envId:", envId);
+    return {
+      environmentId: envId,
+    };
+  } catch (error) {
+    console.error("getDynamicConfig: Error:", error.message, error.stack);
+    if (error instanceof functions.https.HttpsError) throw error;
+    throw new functions.https.HttpsError("internal", "Failed to retrieve Dynamic configuration.");
   }
-  return {
-    environmentId: envId,
-  };
 });
 
 exports.getAuthChallenge = functions.https.onCall(async (data, context) => {
